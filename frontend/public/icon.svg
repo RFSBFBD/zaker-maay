@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2d6a4f"/>
+      <stop offset="100%" stop-color="#1b4332"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#74c69d"/>
+      <stop offset="100%" stop-color="#52b788"/>
+    </linearGradient>
+  </defs>
+  <!-- Background Rounded Shield / Tile -->
+  <rect width="128" height="128" rx="28" fill="url(#brandGrad)"/>
+  
+  <!-- Subtle Internal Glow Ring -->
+  <rect x="4" y="4" width="120" height="120" rx="24" fill="none" stroke="rgba(216, 243, 220, 0.2)" stroke-width="2"/>
+
+  <!-- Academic Graduation Cap / Open Book Emblem -->
+  <!-- Mortarboard Diamond -->
+  <polygon points="64,30 106,48 64,66 22,48" fill="url(#accentGrad)"/>
+  
+  <!-- Cap Underlay & Ribbon -->
+  <path d="M38,58 L38,76 C38,88 64,96 64,96 C64,96 90,88 90,76 L90,58 L64,70 Z" fill="#ffffff" opacity="0.95"/>
+  
+  <!-- Tassel / Pen Accent -->
+  <path d="M96,52 L104,74 C104,76 102,78 100,78 C98,78 96,76 96,74 Z" fill="#f4a261"/>
+  <circle cx="96" cy="52" r="3" fill="#f4a261"/>
+  
+  <!-- Open Book Pages Base -->
+  <path d="M32,98 Q48,93 64,98 Q80,93 96,98 L96,104 Q80,99 64,104 Q48,99 32,104 Z" fill="#d8f3dc"/>
+</svg>

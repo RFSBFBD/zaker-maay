@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2d6a4f" />
+      <stop offset="100%" stop-color="#18332e" />
+    </linearGradient>
+    <linearGradient id="capGrad" x1="8" y1="12" x2="40" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#d8f3dc" />
+      <stop offset="100%" stop-color="#74c69d" />
+    </linearGradient>
+    <linearGradient id="gold" x1="36" y1="18" x2="42" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f4a261" />
+      <stop offset="100%" stop-color="#e07a5f" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded squircle -->
+  <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#bg)" />
+
+  <!-- Graduation Cap Rhombus Top -->
+  <polygon points="24,10 41,18 24,26 7,18" fill="url(#capGrad)" />
+
+  <!-- Mortarboard Skullcap Base -->
+  <path d="M13,22 L13,29 C13,33.5 18,36 24,36 C30,36 35,33.5 35,29 L35,22 C32,24.5 28,26 24,26 C20,26 16,24.5 13,22 Z" fill="#ffffff" opacity="0.95" />
+
+  <!-- Gold Tassel -->
+  <circle cx="24" cy="18" r="1.5" fill="#f4a261" />
+  <path d="M24,18 Q36,20 38,25 L38,30" fill="none" stroke="url(#gold)" stroke-width="1.8" stroke-linecap="round" />
+  <circle cx="38" cy="31" r="1.8" fill="#e07a5f" />
+
+  <!-- Knowledge book spine / pages bottom indicator -->
+  <path d="M16,39 Q24,37.5 32,39" fill="none" stroke="#74c69d" stroke-width="2" stroke-linecap="round" opacity="0.75" />
+</svg>
