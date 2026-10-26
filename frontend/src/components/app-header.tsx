@@ -25,27 +25,24 @@ type CurrentProfile = {
 };
 
 export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
-  const [profile, setProfile] = useState<CurrentProfile | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const cached = localStorage.getItem("zaker_profile");
-        if (cached) return JSON.parse(cached);
-      } catch {}
-    }
-    return null;
-  });
-  const [loadingAuth, setLoadingAuth] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        if (localStorage.getItem("zaker_profile")) return false;
-      } catch {}
-    }
-    return true;
-  });
+  const [profile, setProfile] = useState<CurrentProfile | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true);
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
+    setIsMounted(true);
+
+    // Fast-path: immediately read cached profile on client to avoid layout shifts
+    try {
+      const cached = localStorage.getItem("zaker_profile");
+      if (cached) {
+        setProfile(JSON.parse(cached));
+        setLoadingAuth(false);
+      }
+    } catch {}
+
     let active = true;
     async function loadMe() {
       try {
@@ -135,7 +132,7 @@ export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
           <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.5, color: "var(--ink)" }}>
             ذاكر معي
           </span>
-          {isAdmin && (
+          {isMounted && isAdmin && (
             <span
               style={{
                 fontSize: 11,
@@ -152,83 +149,40 @@ export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
           )}
         </Link>
 
-        {/* Main Navigation: STRICTLY ROLE-BASED */}
-        {!loadingAuth && (
-          <nav
+        {/* Main Navigation: ALWAYS RENDERED FOR ZERO HYDRATION MISMATCH */}
+        <nav
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+          className="main-nav"
+        >
+          {/* Common Home link for everyone: SSR and Client matching */}
+          <Link
+            href="/"
+            className={`nav-link ${pathname === "/" ? "active" : ""}`}
             style={{
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
               gap: 6,
+              padding: "8px 14px",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 600,
+              color: pathname === "/" ? "var(--green)" : "var(--muted)",
+              background: pathname === "/" ? "rgba(45, 106, 79, 0.08)" : "transparent",
             }}
-            className="main-nav"
           >
-            {/* Common Home link for everyone */}
-            <Link
-              href="/"
-              className={`nav-link ${pathname === "/" ? "active" : ""}`}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 14,
-                fontWeight: 600,
-                color: pathname === "/" ? "var(--green)" : "var(--muted)",
-                background: pathname === "/" ? "rgba(45, 106, 79, 0.08)" : "transparent",
-              }}
-            >
-              <span>الرئيسية</span>
-            </Link>
+            <span>الرئيسية</span>
+          </Link>
 
-            {/* STUDENT-ONLY NAVIGATION */}
-            {isStudent && (
-              <>
-                <Link
-                  href="/subjects"
-                  className={`nav-link ${pathname.startsWith("/subjects") ? "active" : ""}`}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "8px 14px",
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: pathname.startsWith("/subjects") ? "var(--green)" : "var(--muted)",
-                    background: pathname.startsWith("/subjects") ? "rgba(45, 106, 79, 0.08)" : "transparent",
-                  }}
-                >
-                  <BookOpenIcon size={16} />
-                  <span>المواد الدراسية</span>
-                </Link>
-
-                <Link
-                  href="/dashboard"
-                  className={`nav-link ${pathname === "/dashboard" ? "active" : ""}`}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "8px 14px",
-                    borderRadius: 8,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: pathname === "/dashboard" ? "var(--green)" : "var(--muted)",
-                    background: pathname === "/dashboard" ? "rgba(45, 106, 79, 0.08)" : "transparent",
-                  }}
-                >
-                  <ChartBarIcon size={16} />
-                  <span>تقدمي ومستواي</span>
-                </Link>
-              </>
-            )}
-
-            {/* ADMIN-ONLY NAVIGATION */}
-            {isAdmin && (
+          {/* STUDENT-ONLY NAVIGATION (Client-mounted) */}
+          {isMounted && isStudent && (
+            <>
               <Link
-                href="/admin"
-                className={`nav-link ${pathname === "/admin" ? "active" : ""}`}
+                href="/subjects"
+                className={`nav-link ${pathname.startsWith("/subjects") ? "active" : ""}`}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -236,24 +190,65 @@ export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
                   padding: "8px 14px",
                   borderRadius: 8,
                   fontSize: 14,
-                  fontWeight: 700,
-                  color: "var(--orange)",
-                  background: pathname === "/admin" ? "rgba(224, 122, 95, 0.12)" : "transparent",
-                  border: "1px solid rgba(224, 122, 95, 0.25)",
+                  fontWeight: 600,
+                  color: pathname.startsWith("/subjects") ? "var(--green)" : "var(--muted)",
+                  background: pathname.startsWith("/subjects") ? "rgba(45, 106, 79, 0.08)" : "transparent",
                 }}
               >
-                <ShieldIcon size={16} />
-                <span>🛡️ لوحة الإدارة</span>
+                <BookOpenIcon size={16} />
+                <span>المواد الدراسية</span>
               </Link>
-            )}
-          </nav>
-        )}
+
+              <Link
+                href="/dashboard"
+                className={`nav-link ${pathname === "/dashboard" ? "active" : ""}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: pathname === "/dashboard" ? "var(--green)" : "var(--muted)",
+                  background: pathname === "/dashboard" ? "rgba(45, 106, 79, 0.08)" : "transparent",
+                }}
+              >
+                <ChartBarIcon size={16} />
+                <span>تقدمي ومستواي</span>
+              </Link>
+            </>
+          )}
+
+          {/* ADMIN-ONLY NAVIGATION (Client-mounted) */}
+          {isMounted && isAdmin && (
+            <Link
+              href="/admin"
+              className={`nav-link ${pathname === "/admin" ? "active" : ""}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontSize: 14,
+                fontWeight: 700,
+                color: "var(--orange)",
+                background: pathname === "/admin" ? "rgba(224, 122, 95, 0.12)" : "transparent",
+                border: "1px solid rgba(224, 122, 95, 0.25)",
+              }}
+            >
+              <ShieldIcon size={16} />
+              <span>🛡️ لوحة الإدارة</span>
+            </Link>
+          )}
+        </nav>
       </div>
 
       {/* Action Controls */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {/* Student-only quick actions */}
-        {isStudent && (
+        {isMounted && isStudent && (
           <>
             <StudySessionModal currentSubjectId={currentSubjectId} />
             <NotificationsDropdown />
@@ -266,6 +261,7 @@ export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
           onClick={toggleTheme}
           title={theme === "light" ? "تفعيل الوضع الليلي" : "تفعيل الوضع النهاري"}
           aria-label="تبديل المظهر"
+          suppressHydrationWarning
           style={{
             background: "transparent",
             border: "1px solid var(--line)",
@@ -283,7 +279,7 @@ export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
         </button>
 
         {/* Auth Action */}
-        {!loadingAuth && (
+        {isMounted ? (
           profile ? (
             <button
               type="button"
@@ -316,6 +312,8 @@ export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
               تسجيل الدخول
             </Link>
           )
+        ) : (
+          <div style={{ width: 88, height: 36 }} />
         )}
       </div>
     </header>

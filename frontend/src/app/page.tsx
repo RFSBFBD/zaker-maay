@@ -64,24 +64,10 @@ const MOTIVATIONAL_TIPS = [
 ];
 
 export default function Home() {
-  const [sessionUser, setSessionUser] = useState<UserProfile | null>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const cached = localStorage.getItem("zaker_profile");
-        if (cached) return JSON.parse(cached);
-      } catch {}
-    }
-    return null;
-  });
+  const [sessionUser, setSessionUser] = useState<UserProfile | null>(null);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [loading, setLoading] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        if (localStorage.getItem("zaker_profile")) return false;
-      } catch {}
-    }
-    return true;
-  });
+  const [loading, setLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
   const [tipIndex, setTipIndex] = useState(0);
 
   // Rotate tips automatically every 7 seconds
@@ -93,7 +79,21 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    setIsMounted(true);
     let active = true;
+
+    // Fast-path: immediately read cached profile on client to avoid layout shifts
+    try {
+      const cached = localStorage.getItem("zaker_profile");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.id) {
+          setSessionUser(parsed);
+          setLoading(false);
+        }
+      }
+    } catch {}
+
     async function initHome() {
       try {
         const {
@@ -143,8 +143,8 @@ export default function Home() {
 
   const activeTip = MOTIVATIONAL_TIPS[tipIndex];
 
-  // While evaluating auth on very first unauthenticated visit, show graceful branded pulse
-  if (loading && !sessionUser) {
+  // On SSR and initial mount pass, render a clean, branded loading state to avoid any hydration mismatch
+  if (!isMounted || (loading && !sessionUser)) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--paper)" }}>
         <AppHeader />
@@ -190,11 +190,161 @@ export default function Home() {
 
       <main className="shell" style={{ flex: 1, paddingBottom: 60 }}>
         {/* =========================================================================
-            STATE 1: LOGGED-IN STUDENT WORKSPACE & MOTIVATION HUB
+            STATE 1: LOGGED-IN USER (STRICT SEPARATION: ADMIN vs STUDENT)
            ========================================================================= */}
         {sessionUser ? (
-          <div style={{ paddingTop: 36, display: "flex", flexDirection: "column", gap: 36 }}>
-            {/* Student Welcome Header Card */}
+          sessionUser.role === "admin" ? (
+            /* =========================================================================
+               STATE 1A: ADMIN OVERVIEW PORTAL
+               ========================================================================= */
+            <div style={{ paddingTop: 36, display: "flex", flexDirection: "column", gap: 32 }}>
+              {/* Admin Welcome Banner */}
+              <div
+                style={{
+                  background: "linear-gradient(135deg, rgba(224, 122, 95, 0.08), rgba(244, 241, 222, 0.2))",
+                  border: "1px solid rgba(224, 122, 95, 0.3)",
+                  borderRadius: 22,
+                  padding: "36px 32px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 24,
+                  boxShadow: "0 6px 24px rgba(0,0,0,0.04)",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "4px 14px",
+                      borderRadius: 20,
+                      background: "rgba(224, 122, 95, 0.15)",
+                      color: "var(--orange)",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <span>🛡️</span>
+                    <span>لوحة تحكم إدارة منصة ذاكر معي</span>
+                  </div>
+                  <h1
+                    style={{
+                      fontSize: "clamp(24px, 3vw, 36px)",
+                      fontWeight: 800,
+                      margin: "0 0 10px",
+                      color: "var(--ink)",
+                    }}
+                  >
+                    مرحباً بك يا مدير المنصة 👋
+                  </h1>
+                  <p style={{ margin: 0, fontSize: 15, color: "var(--muted)", maxWidth: 580, lineHeight: 1.6 }}>
+                    لديك صلاحيات الإدارة الشاملة: إدارة المواد والملفات والمناهج، رفع مهارات وتدريب الذكاء الاصطناعي من GitHub،
+                    ومتابعة تفاعل ونشاط الطلاب بدقة في غرفة العمليات.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <Link
+                    href="/admin"
+                    className="session-start"
+                    style={{
+                      margin: 0,
+                      padding: "14px 28px",
+                      fontSize: 15,
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      background: "var(--orange)",
+                      color: "#fff",
+                      boxShadow: "0 4px 16px rgba(224, 122, 95, 0.3)",
+                    }}
+                  >
+                    <span>🛡️ فتح لوحة الإدارة الشاملة</span>
+                  </Link>
+                </div>
+              </div>
+
+              {/* Admin Quick Modules Grid */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                  gap: 20,
+                }}
+              >
+                <div
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--line)",
+                    borderRadius: 16,
+                    padding: 24,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ fontSize: 28 }}>🤖</div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>تدريب الذكاء الاصطناعي</h3>
+                  <p style={{ margin: 0, fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
+                    ارفع مستودعات GitHub لتعزيز مهارات ومكتبة الشرح للـ AI Agent وتزويده بأحدث الشروح الأكاديمية.
+                  </p>
+                  <Link href="/admin" style={{ color: "var(--orange)", fontWeight: 700, fontSize: 13.5, marginTop: "auto" }}>
+                    الانتقال لقسم الذكاء الاصطناعي ←
+                  </Link>
+                </div>
+
+                <div
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--line)",
+                    borderRadius: 16,
+                    padding: 24,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ fontSize: 28 }}>📈</div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>تحليلات نشاط الطلاب</h3>
+                  <p style={{ margin: 0, fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
+                    فحص عدد الطلاب النشطين، إجمالي ساعات المذاكرة، ومعدلات حل الاختبارات الذكية لحظياً.
+                  </p>
+                  <Link href="/admin" style={{ color: "var(--orange)", fontWeight: 700, fontSize: 13.5, marginTop: "auto" }}>
+                    استعراض لوحة التحليلات ←
+                  </Link>
+                </div>
+
+                <div
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--line)",
+                    borderRadius: 16,
+                    padding: 24,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ fontSize: 28 }}>📚</div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>إدارة المواد والمناهج</h3>
+                  <p style={{ margin: 0, fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
+                    رفع وتعديل الملازم الدراسية والتسجيلات الصوتية وفهرستها لجميع الطلاب المشتركين.
+                  </p>
+                  <Link href="/admin" style={{ color: "var(--orange)", fontWeight: 700, fontSize: 13.5, marginTop: "auto" }}>
+                    إدارة المواد الدراسية ←
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* =========================================================================
+               STATE 1B: LOGGED-IN STUDENT WORKSPACE & MOTIVATION HUB
+               ========================================================================= */
+            <div style={{ paddingTop: 36, display: "flex", flexDirection: "column", gap: 36 }}>
+              {/* Student Welcome Header Card */}
             <div
               style={{
                 background: "linear-gradient(135deg, rgba(45, 106, 79, 0.08), rgba(216, 243, 220, 0.12))",
@@ -560,6 +710,7 @@ export default function Home() {
               )}
             </section>
           </div>
+          )
         ) : (
           /* =========================================================================
              STATE 2: GUEST / BEFORE LOGIN (HIGH-END PROFESSIONAL PRESENTATION HERO)
