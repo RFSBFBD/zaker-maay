@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { createClient } from "@/lib/supabase/client";
+import { AlertIcon } from "@/components/icons";
 
 type QuizSummary = {
   id: string;
@@ -182,7 +182,7 @@ export function SubjectQuizzes({ subjectId }: { subjectId: string }) {
       >
         <div>
           <h2 style={{ margin: "0 0 4px", fontSize: 20, color: "var(--ink)" }}>
-            📝 اختبر فهمك واستيعابك الذكي
+            <PencilIcon size={20} className="mr-2"/> اختبر فهمك واستيعابك الذكي
           </h2>
           <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
             اختبارات تفاعلية يولدها الذكاء الاصطناعي مستندة بدقة على محتوى كتبك ومذكراتك المرفوعة.
@@ -217,9 +217,11 @@ export function SubjectQuizzes({ subjectId }: { subjectId: string }) {
             color: "#9b3f32",
             fontSize: 14,
             marginBottom: 16,
+            display: "flex",
+            alignItems: "center",
           }}
         >
-          ⚠️ {error}
+          <AlertIcon size={16} className="mr-2" /> {error}
         </div>
       )}
 

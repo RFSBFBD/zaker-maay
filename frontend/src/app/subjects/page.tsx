@@ -3,10 +3,30 @@ import Link from "next/link";
 import { SubjectsList } from "@/components/subjects-list";
 import { hasSupabasePublicConfig } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { AppHeader } from "@/components/app-header";
+import { AlertCircleIcon } from "@/components/icons";
 
 export default function SubjectsPage() {
   if (!hasSupabasePublicConfig()) {
-    return <main className="shell"><nav className="topbar"><Link className="brand" href="/"><span className="brand-mark">🎓</span><span>ذاكر معي</span></Link></nav><section className="subjects-content"><h1>إعداد تسجيل الدخول</h1><p className="intro">يلزم إعداد رابط Supabase ومفتاح النشر العام قبل فتح المواد.</p></section></main>;
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--paper)" }}>
+        <AppHeader />
+        <main className="shell" style={{ flex: 1, padding: "48px 0" }}>
+          <div className="card" style={{ maxWidth: 540, margin: "40px auto", textAlign: "center", padding: "36px 24px" }}>
+            <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--warning-bg)", color: "var(--warning)", display: "grid", placeItems: "center", margin: "0 auto 16px" }}>
+              <AlertCircleIcon size={24} />
+            </div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 10px" }}>إعداد تسجيل الدخول مطلوب</h1>
+            <p style={{ margin: "0 0 20px", color: "var(--muted)", fontSize: 14 }}>
+              يلزم إعداد رابط Supabase ومفتاح النشر العام في ملفات البيئة قبل فتح المواد.
+            </p>
+            <Link href="/" className="btn btn-secondary">
+              العودة للرئيسية
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
   }
   return <ProtectedSubjects />;
 }
@@ -15,5 +35,5 @@ async function ProtectedSubjects() {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
   if (error || !data?.claims) redirect("/login?next=%2Fsubjects");
-  return <main className="shell"><SubjectsList /></main>;
+  return <SubjectsList />;
 }

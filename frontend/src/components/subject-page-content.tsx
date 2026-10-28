@@ -9,6 +9,25 @@ import { SubjectLibrary } from "@/components/subject-library";
 import { AppHeader } from "@/components/app-header";
 import { SubjectQuizzes } from "@/components/subject-quizzes";
 import { SubjectFlashcards } from "@/components/subject-flashcards";
+import {
+  ChatIcon,
+  BookOpenIcon,
+  CheckCircleIcon,
+  LayersIcon,
+  ClockIcon,
+  BotIcon,
+  UserIcon,
+  TrashIcon,
+  PlusIcon,
+  WandIcon,
+  SparklesIcon,
+  AlertCircleIcon,
+  XIcon,
+  LightbulbIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  FolderIcon,
+} from "@/components/icons";
 
 type ChatMedia = {
   type: "image" | "svg";
@@ -86,7 +105,7 @@ const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
   content:
-    "مرحبًا بك! أنا رفيقك ومساعدك الذكي في «ذاكر معي». 🎓\nأشرح لك كافة مفاهيم المادة من مراجعك وكتبك المرفوعة فقط، ويمكنك أيضاً طلب رسم توضيحي ذكي لأي مفهوم بصرياً!",
+    "مرحبًا بك! أنا رفيقك ومساعدك الذكي في «ذاكر معي».\nأشرح لك كافة مفاهيم المادة من مراجعك وكتبك المرفوعة فقط، ويمكنك أيضاً طلب رسم توضيحي ذكي لأي مفهوم بصرياً!",
   timestamp: new Date(),
 };
 
@@ -128,11 +147,11 @@ export function SubjectPageContent({ subjectId }: { subjectId: string }) {
       {/* Global Unified Header */}
       <AppHeader currentSubjectId={subjectId} />
 
-      {/* Main Workspace Bar */}
+      {/* Workspace Bar: Navigation & Tabs */}
       <div
         style={{
           borderBottom: "1px solid var(--line)",
-          background: "var(--surface, #fff)",
+          background: "var(--surface)",
           padding: "10px 24px",
           display: "flex",
           justifyContent: "space-between",
@@ -145,85 +164,59 @@ export function SubjectPageContent({ subjectId }: { subjectId: string }) {
           <Link
             href="/subjects"
             className="text-button"
-            style={{ fontSize: 13, color: "var(--muted)", textDecoration: "none" }}
+            style={{ fontSize: 13.5, color: "var(--muted)" }}
           >
-            ← قائمة المواد
+            <ChevronRightIcon size={16} />
+            <span>قائمة المواد</span>
           </Link>
           <span style={{ color: "var(--line)" }}>/</span>
-          <h2 style={{ fontSize: 18, margin: 0, fontWeight: 700, color: "var(--ink)" }}>
-            📖 {subject?.name || "المادة الدراسية"}
+          <h2 style={{ fontSize: 17, margin: 0, fontWeight: 700, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>
+            <BookOpenIcon size={18} style={{ color: "var(--green)" }} />
+            <span>{subject?.name || "المادة الدراسية"}</span>
           </h2>
         </div>
 
-        {/* Tab Toggle */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {/* Tab Toggle Navigation */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} role="tablist">
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "chat"}
             onClick={() => setActiveTab("chat")}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              border: 0,
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 13.5,
-              transition: "all 0.2s",
-              background: activeTab === "chat" ? "var(--green)" : "var(--paper)",
-              color: activeTab === "chat" ? "#fff" : "var(--muted)",
-            }}
+            className={`btn btn-sm ${activeTab === "chat" ? "btn-primary" : "btn-ghost"}`}
           >
-            💬 محادثة وشرح الذكاء الاصطناعي
+            <ChatIcon size={15} />
+            <span>الشرح والمحادثة الذكية</span>
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "library"}
             onClick={() => setActiveTab("library")}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              border: 0,
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 13.5,
-              transition: "all 0.2s",
-              background: activeTab === "library" ? "var(--green)" : "var(--paper)",
-              color: activeTab === "library" ? "#fff" : "var(--muted)",
-            }}
+            className={`btn btn-sm ${activeTab === "library" ? "btn-primary" : "btn-ghost"}`}
           >
-            📚 مكتبة المادة والمراجع
+            <FolderIcon size={15} />
+            <span>مكتبة المادة والمراجع</span>
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "quizzes"}
             onClick={() => setActiveTab("quizzes")}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              border: 0,
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 13.5,
-              transition: "all 0.2s",
-              background: activeTab === "quizzes" ? "var(--green)" : "var(--paper)",
-              color: activeTab === "quizzes" ? "#fff" : "var(--muted)",
-            }}
+            className={`btn btn-sm ${activeTab === "quizzes" ? "btn-primary" : "btn-ghost"}`}
           >
-            📝 اختبر فهمك
+            <CheckCircleIcon size={15} />
+            <span>اختبر فهمك</span>
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={activeTab === "flashcards"}
             onClick={() => setActiveTab("flashcards")}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              border: 0,
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: 13.5,
-              transition: "all 0.2s",
-              background: activeTab === "flashcards" ? "var(--green)" : "var(--paper)",
-              color: activeTab === "flashcards" ? "#fff" : "var(--muted)",
-            }}
+            className={`btn btn-sm ${activeTab === "flashcards" ? "btn-primary" : "btn-ghost"}`}
           >
-            🃏 البطاقات التعليمية
+            <LayersIcon size={15} />
+            <span>البطاقات التعليمية</span>
           </button>
         </div>
       </div>
@@ -234,12 +227,20 @@ export function SubjectPageContent({ subjectId }: { subjectId: string }) {
           <FullScreenChat subjectId={subjectId} onSwitchToLibrary={() => setActiveTab("library")} />
         )}
         {activeTab === "library" && (
-          <div style={{ padding: "24px 20px" }}>
+          <div className="shell" style={{ padding: "28px 20px" }}>
             <SubjectLibrary subjectId={subjectId} />
           </div>
         )}
-        {activeTab === "quizzes" && <SubjectQuizzes subjectId={subjectId} />}
-        {activeTab === "flashcards" && <SubjectFlashcards subjectId={subjectId} />}
+        {activeTab === "quizzes" && (
+          <div className="shell" style={{ padding: "28px 20px" }}>
+            <SubjectQuizzes subjectId={subjectId} />
+          </div>
+        )}
+        {activeTab === "flashcards" && (
+          <div className="shell" style={{ padding: "28px 20px" }}>
+            <SubjectFlashcards subjectId={subjectId} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -431,7 +432,7 @@ function FullScreenChat({
     const userNote: ChatMessage = {
       id: `req-${Date.now()}`,
       role: "user",
-      content: `🎨 طلب رسم توضيحي بالذكاء الاصطناعي لـ: «${prompt.slice(0, 80)}»`,
+      content: `طلب رسم توضيحي بالذكاء الاصطناعي لـ: «${prompt.slice(0, 80)}»`,
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userNote]);
@@ -492,51 +493,31 @@ function FullScreenChat({
           alignItems: "center",
           padding: "8px 20px",
           borderBottom: "1px solid var(--line)",
-          background: "var(--surface, #fff)",
+          background: "var(--surface)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button
             type="button"
             onClick={() => setShowThreadsDrawer((prev) => !prev)}
-            className="text-button"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 13,
-              fontWeight: 600,
-              padding: "6px 12px",
-              borderRadius: 8,
-              border: "1px solid var(--line)",
-              background: showThreadsDrawer ? "rgba(100, 140, 90, 0.12)" : "var(--paper)",
-              color: showThreadsDrawer ? "var(--green)" : "var(--ink)",
-            }}
+            className="btn btn-secondary btn-sm"
           >
-            <span>📜</span>
+            <ClockIcon size={14} />
             <span>سجل المحادثات ({threads.length})</span>
           </button>
 
           <button
             type="button"
             onClick={handleNewChat}
-            className="session-start"
-            style={{
-              margin: 0,
-              padding: "6px 14px",
-              fontSize: 12.5,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
+            className="btn btn-primary btn-sm"
           >
-            <span>➕</span>
+            <PlusIcon size={14} />
             <span>محادثة جديدة</span>
           </button>
         </div>
 
-        <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500 }}>
-          {activeThread ? `📌 ${activeThread.title}` : "محادثة جديدة 💭"}
+        <div style={{ fontSize: 13, color: "var(--muted)", fontWeight: 600 }}>
+          {activeThread ? activeThread.title : "جلسة محادثة جديدة"}
         </div>
       </div>
 
@@ -550,9 +531,9 @@ function FullScreenChat({
             bottom: 0,
             width: 320,
             maxWidth: "85%",
-            background: "var(--surface, #fff)",
+            background: "var(--surface)",
             borderLeft: "1px solid var(--line)",
-            boxShadow: "-4px 0 20px rgba(0,0,0,0.08)",
+            boxShadow: "var(--shadow-lg)",
             zIndex: 30,
             display: "flex",
             flexDirection: "column",
@@ -569,16 +550,18 @@ function FullScreenChat({
               marginBottom: 12,
             }}
           >
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>
-              📜 سجل محادثاتك السابقة
+            <h3 style={{ margin: 0, fontSize: 14.5, fontWeight: 700, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>
+              <ClockIcon size={16} />
+              <span>سجل المحادثات السابقة</span>
             </h3>
             <button
               type="button"
               onClick={() => setShowThreadsDrawer(false)}
-              className="text-button"
-              style={{ fontSize: 18, padding: "2px 8px" }}
+              className="btn btn-ghost btn-sm"
+              style={{ padding: "4px" }}
+              aria-label="إغلاق السجل"
             >
-              ✕
+              <XIcon size={16} />
             </button>
           </div>
 
@@ -599,14 +582,14 @@ function FullScreenChat({
                   style={{
                     padding: "10px 12px",
                     borderRadius: 10,
-                    background: activeThreadId === t.id ? "rgba(100, 140, 90, 0.12)" : "var(--paper)",
+                    background: activeThreadId === t.id ? "var(--mint)" : "var(--surface-raised)",
                     border: `1.5px solid ${activeThreadId === t.id ? "var(--green)" : "var(--line)"}`,
                     cursor: "pointer",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
                     gap: 8,
-                    transition: "all 0.15s",
+                    transition: "all 0.15s ease",
                   }}
                 >
                   <div style={{ overflow: "hidden", flex: 1 }}>
@@ -634,11 +617,11 @@ function FullScreenChat({
                   <button
                     type="button"
                     onClick={(e) => void handleDeleteThread(t.id, e)}
-                    className="text-button"
+                    className="btn btn-ghost btn-sm"
                     title="حذف المحادثة"
-                    style={{ color: "#9b3f32", fontSize: 14, padding: "4px" }}
+                    style={{ color: "var(--danger)", padding: "4px" }}
                   >
-                    🗑️
+                    <TrashIcon size={14} />
                   </button>
                 </div>
               ))
@@ -656,7 +639,7 @@ function FullScreenChat({
           padding: "24px 20px",
           display: "flex",
           flexDirection: "column",
-          gap: 16,
+          gap: 18,
         }}
         aria-live="polite"
       >
@@ -685,22 +668,23 @@ function FullScreenChat({
                   gap: 6,
                 }}
               >
-                {isUser ? "👤 أنت" : "🎓 مساعد ذاكر معي"}
+                {isUser ? <UserIcon size={13} /> : <BotIcon size={14} style={{ color: "var(--green)" }} />}
+                <span>{isUser ? "أنت" : "مساعد ذاكر معي"}</span>
               </span>
 
               {/* Chat Bubble */}
               <div
                 style={{
                   padding: "16px 20px",
-                  borderRadius: 16,
-                  borderBottomRightRadius: isUser ? 4 : 16,
-                  borderBottomLeftRadius: isUser ? 16 : 4,
-                  background: isUser ? "var(--green)" : "var(--surface, #fff)",
-                  color: isUser ? "#fff" : "var(--ink)",
-                  boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
+                  borderRadius: 14,
+                  borderBottomRightRadius: isUser ? 4 : 14,
+                  borderBottomLeftRadius: isUser ? 14 : 4,
+                  background: isUser ? "var(--green)" : "var(--surface)",
+                  color: isUser ? "#ffffff" : "var(--ink)",
+                  boxShadow: "var(--shadow-card)",
                   border: isUser ? 0 : "1px solid var(--line)",
-                  lineHeight: 1.8,
-                  fontSize: 15,
+                  lineHeight: 1.75,
+                  fontSize: 14.5,
                   width: "100%",
                 }}
               >
@@ -708,8 +692,8 @@ function FullScreenChat({
                 {msg.out_of_scope && (
                   <div
                     style={{
-                      background: "rgba(215, 142, 93, 0.12)",
-                      border: "1px solid var(--orange)",
+                      background: "var(--orange-light)",
+                      border: "1px solid rgba(217, 119, 54, 0.3)",
                       color: "var(--ink)",
                       borderRadius: 8,
                       padding: "10px 14px",
@@ -720,7 +704,7 @@ function FullScreenChat({
                       gap: 8,
                     }}
                   >
-                    <span>📬</span>
+                    <AlertCircleIcon size={16} style={{ color: "var(--orange)", flexShrink: 0 }} />
                     <span>
                       <strong>تنبيه:</strong> هذا السؤال لم يُذكر في مراجع المادة، وتم إرساله إلى إدارة المادة لمراجعته
                       والرد عليك في الإشعارات.
@@ -737,19 +721,9 @@ function FullScreenChat({
                     <button
                       type="button"
                       onClick={onSwitchToLibrary}
-                      className="session-start"
-                      style={{
-                        margin: 0,
-                        background: "var(--green)",
-                        color: "#fff",
-                        padding: "10px 20px",
-                        fontSize: 14,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
+                      className="btn btn-secondary btn-sm"
                     >
-                      <span>📁</span>
+                      <FolderIcon size={16} />
                       <span>الانتقال لرفع الكتب والمصادر في المكتبة الآن</span>
                     </button>
                   </div>
@@ -762,7 +736,7 @@ function FullScreenChat({
                       marginTop: 14,
                       borderRadius: 10,
                       overflow: "hidden",
-                      background: "#fff",
+                      background: "var(--surface)",
                       border: "1px solid var(--line)",
                       padding: 12,
                     }}
@@ -792,7 +766,7 @@ function FullScreenChat({
                     display: "block",
                     marginTop: 6,
                     fontSize: 11,
-                    opacity: 0.65,
+                    opacity: 0.7,
                     textAlign: isUser ? "right" : "left",
                   }}
                 >
@@ -807,19 +781,18 @@ function FullScreenChat({
         {sending && (
           <div style={{ alignSelf: "flex-end", maxWidth: "80%" }}>
             <div
+              className="card"
               style={{
-                padding: "14px 18px",
-                borderRadius: 16,
-                background: "var(--surface, #fff)",
-                border: "1px solid var(--line)",
+                padding: "12px 18px",
+                borderRadius: 14,
                 color: "var(--muted)",
-                fontSize: 14,
+                fontSize: 13.5,
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
               }}
             >
-              <span>💭</span>
+              <SparklesIcon size={16} style={{ color: "var(--green)" }} />
               <span>المساعد يفكر ويستخرج الشرح من مصادر المادة…</span>
             </div>
           </div>
@@ -828,34 +801,28 @@ function FullScreenChat({
         {generatingImage && (
           <div style={{ alignSelf: "flex-end", maxWidth: "80%" }}>
             <div
+              className="card"
               style={{
-                padding: "14px 18px",
-                borderRadius: 16,
-                background: "var(--surface, #fff)",
-                border: "1px solid var(--line)",
+                padding: "12px 18px",
+                borderRadius: 14,
                 color: "var(--muted)",
-                fontSize: 14,
+                fontSize: 13.5,
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
               }}
             >
-              <span>🎨</span>
-              <span>جاري توليد الرسم التوضيحي التعليمي…</span>
+              <WandIcon size={16} style={{ color: "var(--orange)" }} />
+              <span>جارٍ توليد الرسم التوضيحي التعليمي…</span>
             </div>
           </div>
         )}
 
         {error && (
           <div
-            style={{
-              padding: "12px 16px",
-              borderRadius: 8,
-              background: "#fff0ed",
-              color: "#9b3f32",
-              fontSize: 14,
-              textAlign: "center",
-            }}
+            className="form-error"
+            role="alert"
+            style={{ textAlign: "center" }}
           >
             {error}
           </div>
@@ -865,12 +832,12 @@ function FullScreenChat({
       {/* Floating Bottom Section: Prompt Chips + Input Bar */}
       <div
         style={{
-          background: "var(--surface, #fff)",
+          background: "var(--surface)",
           borderTop: "1px solid var(--line)",
           padding: "12px 20px 16px",
         }}
       >
-        {/* Suggestion Chips (ONLY on Chat Screen) */}
+        {/* Suggestion Chips */}
         <div
           style={{
             display: "flex",
@@ -887,20 +854,17 @@ function FullScreenChat({
               type="button"
               onClick={() => void handleSend(prompt)}
               disabled={sending}
+              className="btn btn-ghost btn-sm"
               style={{
-                whiteSpace: "nowrap",
-                fontSize: 12.5,
-                padding: "6px 14px",
                 borderRadius: 20,
                 border: "1px solid var(--line)",
-                background: "var(--paper)",
-                color: "var(--ink)",
-                cursor: "pointer",
-                fontWeight: 500,
-                transition: "all 0.2s",
+                background: "var(--surface-raised)",
+                fontSize: 12.5,
+                fontWeight: 600,
               }}
             >
-              💡 {prompt}
+              <LightbulbIcon size={13} style={{ color: "var(--green)" }} />
+              <span>{prompt}</span>
             </button>
           ))}
         </div>
@@ -919,45 +883,30 @@ function FullScreenChat({
             }}
             placeholder="اسأل رفيقك الذكي عن أي درس، أو اطلب شرحاً مبسطاً..."
             rows={1}
+            className="input-field"
             style={{
               flex: 1,
-              minHeight: 48,
+              minHeight: 46,
               maxHeight: 120,
-              padding: "12px 16px",
-              borderRadius: 12,
-              border: "1px solid var(--line)",
-              background: "var(--paper)",
-              color: "var(--ink)",
-              fontSize: 14,
-              fontFamily: "inherit",
               resize: "none",
               lineHeight: 1.5,
             }}
           />
 
-          {/* Educational Diagram / Image Button (Nano Banana) */}
+          {/* Educational Diagram / Image Button */}
           <button
             type="button"
             onClick={() => void handleGenerateIllustration()}
             disabled={generatingImage || sending}
             title="توليد رسم توضيحي أو خريطة بصرية للمفهوم"
+            className="btn btn-secondary"
             style={{
-              height: 48,
-              padding: "0 16px",
-              borderRadius: 12,
-              border: "1px solid var(--line)",
-              background: "rgba(215, 142, 93, 0.1)",
+              height: 46,
               color: "var(--orange)",
-              fontWeight: 600,
-              fontSize: 13,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              whiteSpace: "nowrap",
+              borderColor: "rgba(217, 119, 54, 0.3)",
             }}
           >
-            <span>🎨</span>
+            <WandIcon size={16} />
             <span>رسم توضيحي</span>
           </button>
 
@@ -965,25 +914,11 @@ function FullScreenChat({
           <button
             type="submit"
             disabled={sending || !input.trim()}
-            style={{
-              height: 48,
-              padding: "0 22px",
-              borderRadius: 12,
-              border: 0,
-              background: "var(--green)",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 14,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              whiteSpace: "nowrap",
-              opacity: sending || !input.trim() ? 0.6 : 1,
-            }}
+            className="btn btn-primary"
+            style={{ height: 46, padding: "0 22px" }}
           >
             <span>إرسال</span>
-            <span>🚀</span>
+            <ChevronLeftIcon size={16} />
           </button>
         </form>
       </div>

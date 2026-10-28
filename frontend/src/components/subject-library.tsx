@@ -55,6 +55,15 @@ function formatSize(bytes: number): string {
 }
 
 function processingLabel(status: Resource["processing_status"]): string {
+  // Return plain text without emoji for cleaner UI
+  return {
+    pending: "قيد المعالجة",
+    ready: "النص جاهز",
+    no_text: "لم يُستخرج نص",
+    unsupported: "لا يدعم استخراج النص",
+    truncated: "عولج جزء من النص",
+    failed: "فشل المعالجة",
+  }[status];
   return {
     pending: "⏳ بانتظار المعالجة",
     ready: "✅ النص جاهز للشرح والبحث",

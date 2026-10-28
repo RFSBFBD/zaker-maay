@@ -16,6 +16,7 @@ import {
   SunIcon,
   MoonIcon,
   LogoutIcon,
+  UserIcon,
 } from "@/components/icons";
 
 type CurrentProfile = {
@@ -94,228 +95,254 @@ export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
   const isStudent = profile?.role === "student";
 
   return (
-    <header
-      className="topbar"
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "0 24px",
-        borderBottom: "1px solid var(--line)",
-        background: "var(--surface)",
-        height: 72,
-        position: "sticky",
-        top: 0,
-        zIndex: 900,
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
-      }}
-    >
-      {/* Brand & Nav */}
-      <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-        <Link href="/" className="brand" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span
-            className="brand-mark"
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 12,
-              background: "linear-gradient(135deg, var(--green), var(--green-hover))",
-              color: "#fff",
-              display: "grid",
-              placeItems: "center",
-              boxShadow: "0 4px 12px rgba(45, 106, 79, 0.25)",
-            }}
-          >
-            <GraduationCapIcon size={22} />
-          </span>
-          <span style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.5, color: "var(--ink)" }}>
-            ذاكر معي
-          </span>
-          {isMounted && isAdmin && (
-            <span
+    <>
+      <header className="topbar">
+        <div className="shell-wide" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+          {/* Brand & Desktop Navigation */}
+          <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
+            <Link href="/" className="brand" aria-label="الصفحة الرئيسية لذاكر معي">
+              <span className="brand-mark">
+                <GraduationCapIcon size={22} />
+              </span>
+              <span style={{ fontSize: 19, fontWeight: 800, letterSpacing: -0.5, color: "var(--ink)" }}>
+                ذاكر معي
+              </span>
+              {isMounted && isAdmin && (
+                <span className="badge badge-orange" style={{ fontSize: 11, fontWeight: 700 }}>
+                  مسؤول المنصة
+                </span>
+              )}
+            </Link>
+
+            {/* Desktop Navigation */}
+            <nav className="main-nav" style={{ display: "flex", alignItems: "center", gap: 6 }} aria-label="التنقل الرئيسي">
+              <Link
+                href="/"
+                className={`nav-link ${pathname === "/" ? "active" : ""}`}
+              >
+                <span>الرئيسية</span>
+              </Link>
+
+              {/* STUDENT NAVIGATION */}
+              {isMounted && isStudent && (
+                <>
+                  <Link
+                    href="/subjects"
+                    className={`nav-link ${pathname.startsWith("/subjects") ? "active" : ""}`}
+                  >
+                    <BookOpenIcon size={16} />
+                    <span>المواد الدراسية</span>
+                  </Link>
+
+                  <Link
+                    href="/dashboard"
+                    className={`nav-link ${pathname === "/dashboard" ? "active" : ""}`}
+                  >
+                    <ChartBarIcon size={16} />
+                    <span>تقدمي ومستواي</span>
+                  </Link>
+                </>
+              )}
+
+              {/* ADMIN NAVIGATION */}
+              {isMounted && isAdmin && (
+                <Link
+                  href="/admin"
+                  className={`nav-link ${pathname === "/admin" ? "active" : ""}`}
+                  style={{
+                    color: pathname === "/admin" ? "var(--orange)" : "var(--muted)",
+                    background: pathname === "/admin" ? "var(--orange-light)" : "transparent",
+                    borderColor: pathname === "/admin" ? "rgba(217, 119, 54, 0.3)" : "transparent",
+                  }}
+                >
+                  <ShieldIcon size={16} />
+                  <span>لوحة الإدارة</span>
+                </Link>
+              )}
+            </nav>
+          </div>
+
+          {/* Action Controls & Utilities */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Student Study Session Modal & Notifications */}
+            {isMounted && isStudent && (
+              <>
+                <StudySessionModal currentSubjectId={currentSubjectId} />
+                <NotificationsDropdown />
+              </>
+            )}
+
+            {/* Theme Switcher Toggle */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={theme === "light" ? "تفعيل الوضع الليلي" : "تفعيل الوضع النهاري"}
+              aria-label={theme === "light" ? "تفعيل الوضع الليلي" : "تفعيل الوضع النهاري"}
+              suppressHydrationWarning
               style={{
-                fontSize: 11,
-                fontWeight: 700,
-                padding: "2px 8px",
-                borderRadius: 12,
-                background: "rgba(224, 122, 95, 0.15)",
-                color: "var(--orange)",
-                border: "1px solid rgba(224, 122, 95, 0.3)",
+                background: "var(--surface)",
+                border: "1px solid var(--line)",
+                borderRadius: 9,
+                width: 38,
+                height: 38,
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+                color: "var(--ink)",
+                transition: "all 0.15s ease",
               }}
             >
-              مسؤول المنصة
-            </span>
-          )}
-        </Link>
+              {theme === "light" ? <MoonIcon size={17} /> : <SunIcon size={17} />}
+            </button>
 
-        {/* Main Navigation: ALWAYS RENDERED FOR ZERO HYDRATION MISMATCH */}
+            {/* Auth Action */}
+            {isMounted ? (
+              profile ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSignOut()}
+                  className="btn btn-ghost btn-sm"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    border: "1px solid var(--line)",
+                    borderRadius: 9,
+                    height: 38,
+                    padding: "0 12px",
+                  }}
+                  title="تسجيل الخروج"
+                >
+                  <LogoutIcon size={15} />
+                  <span>خروج</span>
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="btn btn-primary btn-sm"
+                  style={{ height: 38, padding: "0 16px" }}
+                >
+                  <UserIcon size={15} />
+                  <span>تسجيل الدخول</span>
+                </Link>
+              )
+            ) : (
+              <div style={{ width: 88, height: 38 }} />
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile Bottom Navigation Bar (Visible only on small screens for authenticated users) */}
+      {isMounted && profile && (
         <nav
+          className="mobile-bottom-nav"
           style={{
-            display: "flex",
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 90,
+            background: "var(--surface)",
+            borderTop: "1px solid var(--line)",
+            display: "none",
+            justifyContent: "space-around",
             alignItems: "center",
-            gap: 6,
+            padding: "8px 12px calc(8px + env(safe-area-inset-bottom, 0px))",
+            boxShadow: "0 -2px 10px rgba(0,0,0,0.04)",
           }}
-          className="main-nav"
+          aria-label="التنقل على الهواتف"
         >
-          {/* Common Home link for everyone: SSR and Client matching */}
           <Link
             href="/"
-            className={`nav-link ${pathname === "/" ? "active" : ""}`}
             style={{
-              display: "inline-flex",
+              display: "flex",
+              flexDirection: "column",
               alignItems: "center",
-              gap: 6,
-              padding: "8px 14px",
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 600,
+              gap: 3,
+              fontSize: 11,
+              fontWeight: 700,
               color: pathname === "/" ? "var(--green)" : "var(--muted)",
-              background: pathname === "/" ? "rgba(45, 106, 79, 0.08)" : "transparent",
+              minWidth: 50,
+              padding: "4px 0",
             }}
           >
+            <GraduationCapIcon size={20} />
             <span>الرئيسية</span>
           </Link>
 
-          {/* STUDENT-ONLY NAVIGATION (Client-mounted) */}
-          {isMounted && isStudent && (
+          {isStudent && (
             <>
               <Link
                 href="/subjects"
-                className={`nav-link ${pathname.startsWith("/subjects") ? "active" : ""}`}
                 style={{
-                  display: "inline-flex",
+                  display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  fontSize: 14,
-                  fontWeight: 600,
+                  gap: 3,
+                  fontSize: 11,
+                  fontWeight: 700,
                   color: pathname.startsWith("/subjects") ? "var(--green)" : "var(--muted)",
-                  background: pathname.startsWith("/subjects") ? "rgba(45, 106, 79, 0.08)" : "transparent",
+                  minWidth: 50,
+                  padding: "4px 0",
                 }}
               >
-                <BookOpenIcon size={16} />
-                <span>المواد الدراسية</span>
+                <BookOpenIcon size={20} />
+                <span>المواد</span>
               </Link>
 
               <Link
                 href="/dashboard"
-                className={`nav-link ${pathname === "/dashboard" ? "active" : ""}`}
                 style={{
-                  display: "inline-flex",
+                  display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  fontSize: 14,
-                  fontWeight: 600,
+                  gap: 3,
+                  fontSize: 11,
+                  fontWeight: 700,
                   color: pathname === "/dashboard" ? "var(--green)" : "var(--muted)",
-                  background: pathname === "/dashboard" ? "rgba(45, 106, 79, 0.08)" : "transparent",
+                  minWidth: 50,
+                  padding: "4px 0",
                 }}
               >
-                <ChartBarIcon size={16} />
-                <span>تقدمي ومستواي</span>
+                <ChartBarIcon size={20} />
+                <span>إنجازاتي</span>
               </Link>
             </>
           )}
 
-          {/* ADMIN-ONLY NAVIGATION (Client-mounted) */}
-          {isMounted && isAdmin && (
+          {isAdmin && (
             <Link
               href="/admin"
-              className={`nav-link ${pathname === "/admin" ? "active" : ""}`}
               style={{
-                display: "inline-flex",
+                display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 14,
+                gap: 3,
+                fontSize: 11,
                 fontWeight: 700,
-                color: "var(--orange)",
-                background: pathname === "/admin" ? "rgba(224, 122, 95, 0.12)" : "transparent",
-                border: "1px solid rgba(224, 122, 95, 0.25)",
+                color: pathname === "/admin" ? "var(--orange)" : "var(--muted)",
+                minWidth: 50,
+                padding: "4px 0",
               }}
             >
-              <ShieldIcon size={16} />
-              <span>🛡️ لوحة الإدارة</span>
+              <ShieldIcon size={20} />
+              <span>الإدارة</span>
             </Link>
           )}
         </nav>
-      </div>
+      )}
 
-      {/* Action Controls */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        {/* Student-only quick actions */}
-        {isMounted && isStudent && (
-          <>
-            <StudySessionModal currentSubjectId={currentSubjectId} />
-            <NotificationsDropdown />
-          </>
-        )}
-
-        {/* Theme Switcher Toggle (Light / Dark) */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          title={theme === "light" ? "تفعيل الوضع الليلي" : "تفعيل الوضع النهاري"}
-          aria-label="تبديل المظهر"
-          suppressHydrationWarning
-          style={{
-            background: "transparent",
-            border: "1px solid var(--line)",
-            borderRadius: 10,
-            width: 38,
-            height: 38,
-            display: "grid",
-            placeItems: "center",
-            cursor: "pointer",
-            color: "var(--ink)",
-            transition: "border-color 0.2s, background 0.2s",
-          }}
-        >
-          {theme === "light" ? <MoonIcon size={18} /> : <SunIcon size={18} />}
-        </button>
-
-        {/* Auth Action */}
-        {isMounted ? (
-          profile ? (
-            <button
-              type="button"
-              onClick={() => void handleSignOut()}
-              className="text-button"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--muted)",
-                padding: "7px 12px",
-                borderRadius: 8,
-                border: "1px solid var(--line)",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-              title="تسجيل الخروج"
-            >
-              <LogoutIcon size={15} />
-              <span>خروج</span>
-            </button>
-          ) : (
-            <Link
-              href="/login"
-              className="session-start"
-              style={{ margin: 0, padding: "8px 18px", fontSize: 13.5, borderRadius: 10 }}
-            >
-              تسجيل الدخول
-            </Link>
-          )
-        ) : (
-          <div style={{ width: 88, height: 36 }} />
-        )}
-      </div>
-    </header>
+      <style jsx global>{`
+        @media (max-width: 768px) {
+          .mobile-bottom-nav {
+            display: flex !important;
+          }
+          body {
+            padding-bottom: 64px;
+          }
+        }
+      `}</style>
+    </>
   );
 }
