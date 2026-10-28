@@ -20,7 +20,13 @@ from app.core.middleware import UploadBodyLimitMiddleware
 from app.core.config import get_settings
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="0.1.0", debug=settings.debug)
+app = FastAPI(
+    title=settings.app_name,
+    version="0.1.0",
+    debug=settings.debug,
+    redirect_slashes=False,
+)
+app.add_middleware(UploadBodyLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -29,7 +35,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(UploadBodyLimitMiddleware)
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(subjects_router)
