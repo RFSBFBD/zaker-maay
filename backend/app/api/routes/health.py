@@ -16,9 +16,7 @@ def ready() -> dict[str, object]:
     services = {
         "database": bool(settings.database_url),
         "supabase_auth": bool(
-            settings.supabase_url
-            and settings.supabase_jwt_issuer
-            and settings.supabase_jwt_jwks_url
+            (settings.supabase_url or (settings.supabase_jwt_issuer and settings.supabase_jwt_jwks_url))
             and settings.supabase_jwt_audience
         ),
         "cloudinary": bool(
@@ -39,10 +37,10 @@ def config_check(settings: Settings = get_settings()) -> dict[str, object]:
     """Report configuration presence only; never include configuration values."""
     keys = {
         "database_url": settings.database_url,
-        "supabase_auth": settings.supabase_url
-        and settings.supabase_jwt_issuer
-        and settings.supabase_jwt_jwks_url
-        and settings.supabase_jwt_audience,
+        "supabase_auth": bool(
+            (settings.supabase_url or (settings.supabase_jwt_issuer and settings.supabase_jwt_jwks_url))
+            and settings.supabase_jwt_audience
+        ),
         "cloudinary": settings.cloudinary_cloud_name
         and settings.cloudinary_api_key
         and settings.cloudinary_api_secret,

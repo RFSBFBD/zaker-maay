@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Annotated, Any
@@ -8,7 +9,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
-from jwt.exceptions import PyJWKClientConnectionError, PyJWTError
+from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError, PyJWTError
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -17,6 +18,8 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.db.models import UserProfile
 from app.db.session import get_db
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_ALGORITHMS = ["ES256", "RS256"]
 bearer_scheme = HTTPBearer(auto_error=False, bearerFormat="JWT")
@@ -46,15 +49,16 @@ def verify_access_token(
     settings: Settings,
     jwks_client: Any,
 ) -> UserIdentity:
-    if not settings.supabase_jwt_issuer or not settings.supabase_jwt_audience:
-        raise AuthConfigurationError("JWT issuer and audience must be configured.")
+    audience = settings.supabase_jwt_audience or "authenticated"
+    if not settings.supabase_jwt_issuer:
+        raise AuthConfigurationError("JWT issuer must be configured.")
     key = jwks_client.get_signing_key_from_jwt(token).key
     claims = jwt.decode(
         token,
         key,
         algorithms=SUPPORTED_ALGORITHMS,
         issuer=settings.supabase_jwt_issuer,
-        audience=settings.supabase_jwt_audience,
+        audience=audience,
         options={"require": ["exp", "iss", "aud", "sub"]},
     )
     if claims.get("role") != "authenticated":
@@ -73,19 +77,25 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not settings.supabase_jwt_jwks_url:
+        logger.error("Authentication rejected: supabase_jwt_jwks_url is not configured.")
         raise HTTPException(status_code=503, detail="Authentication is not configured.")
     try:
         issuer = urlparse(settings.supabase_jwt_issuer or "")
         jwks = urlparse(settings.supabase_jwt_jwks_url)
         if issuer.scheme != "https" or issuer.hostname != jwks.hostname:
-            raise AuthConfigurationError("JWT issuer and JWKS endpoint must share an HTTPS host.")
+            raise AuthConfigurationError(
+                f"JWT issuer ({issuer.hostname}) and JWKS endpoint ({jwks.hostname}) must share an HTTPS host."
+            )
         client = get_jwks_client(settings.supabase_jwt_jwks_url)
         return verify_access_token(credentials.credentials, settings, client)
-    except AuthConfigurationError:
+    except AuthConfigurationError as exc:
+        logger.error("Authentication configuration error: %s", exc)
         raise HTTPException(status_code=503, detail="Authentication is not configured.") from None
-    except PyJWKClientConnectionError:
+    except (PyJWKClientConnectionError, PyJWKClientError) as exc:
+        logger.error("Authentication provider error: %s", exc)
         raise HTTPException(status_code=503, detail="Authentication provider is unavailable.") from None
-    except (PyJWTError, ValidationError, ValueError, TypeError, KeyError):
+    except (PyJWTError, ValidationError, ValueError, TypeError, KeyError) as exc:
+        logger.warning("Token verification rejected: %s (%s)", type(exc).__name__, exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired access token.",
