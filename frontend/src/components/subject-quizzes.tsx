@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { AlertIcon } from "@/components/icons";
+import { AlertIcon, PencilIcon } from "@/components/icons";
+import { createClient } from "@/lib/supabase/client";
 
 type QuizSummary = {
   id: string;
