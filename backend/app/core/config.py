@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     cloudinary_api_key: str | None = None
     cloudinary_api_secret: str | None = None
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_model: str = "gemini-3.5-flash"
 
     @model_validator(mode="after")
     def populate_supabase_defaults(self) -> "Settings":

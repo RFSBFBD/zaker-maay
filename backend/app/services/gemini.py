@@ -476,7 +476,46 @@ def generate_concept_illustration(
             http_options=types.HttpOptions(timeout=25_000),
         )
 
-        # Check if the configured model is an Imagen model
+                # Check if the configured model is an Imagen model or Gemini 3.1 Flash Image model
+        # Use the new Gemini 3.1 Flash Image model for image generation if configured
+        if ai_cfg.model_name == "gemini-3.1-flash-image":
+            try:
+                result = client.models.generate_content(
+                    model=ai_cfg.model_name,
+                    contents=prompt,
+                    generation_config=types.GenerationConfig(
+                        response_mime_type="image/jpeg",
+                        temperature=ai_cfg.temperature,
+                        max_output_tokens=ai_cfg.max_output_tokens,
+                    ),
+                )
+                # Extract base64 image data from result if present
+                if result.text:
+                    import base64, re
+                    match = re.search(r"data:image/jpeg;base64,([A-Za-z0-9+/=]+)", result.text)
+                    if match:
+                        b64 = match.group(1)
+                        return {
+                            "type": "image",
+                            "image_url": f"data:image/jpeg;base64,{b64}",
+                            "title": prompt,
+                            "description": f"رسم توضيحي مولد لـ: {prompt}",
+                        }
+                # If SDK returns image bytes directly (legacy), handle similarly
+                if hasattr(result, "candidates") and result.candidates:
+                    try:
+                        img_bytes = result.candidates[0].content.parts[0].blob
+                        b64 = base64.b64encode(img_bytes).decode()
+                        return {
+                            "type": "image",
+                            "image_url": f"data:image/jpeg;base64,{b64}",
+                            "title": prompt,
+                            "description": f"رسم توضيحي مولد لـ: {prompt}",
+                        }
+                    except Exception:
+                        pass
+            except Exception as img_exc:
+                logger.info("Gemini 3.1 Flash Image generation attempted, falling back to SVG diagram: %s", img_exc)
         if "imagen" in ai_cfg.model_name.lower():
             try:
                 result = client.models.generate_images(
