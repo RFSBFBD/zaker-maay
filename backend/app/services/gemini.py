@@ -195,7 +195,7 @@ def generate_quiz_draft(
     try:
         client = genai.Client(
             api_key=ai_cfg.api_key,
-            http_options=types.HttpOptions(timeout=25_000),
+            http_options=types.HttpOptions(timeout=55_000),
         )
         start_time = time.time()
         logger.info("[quiz] Starting Gemini generate_content: model=%s", ai_cfg.model_name)
@@ -214,6 +214,7 @@ def generate_quiz_draft(
                 max_output_tokens=ai_cfg.max_output_tokens,
                 response_mime_type="application/json",
                 response_schema=GeneratedQuiz,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         logger.info("[quiz] Gemini response received in %.2f sec", time.time() - start_time)
