@@ -233,7 +233,7 @@ def chat_with_context(
     except Exception as exc:
         if getattr(exc, "code", None) == 429:
             raise RuntimeError("تم تجاوز حد الطلبات، حاول لاحقاً.") from None
-        logger.warning("Gemini chat request failed: %s", exc)
+        logger.exception("Gemini chat request failed: %s", exc)
         raise RuntimeError("فشل الاتصال بالنموذج الذكي.") from None
     finally:
         if client is not None:
@@ -452,9 +452,10 @@ def chat(
         )
     except Exception as exc:
         db.rollback()
+        logger.exception("Chat endpoint failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
+            detail=f"Internal Server Error: {str(exc)}",
         ) from exc
 
     out_of_scope = False

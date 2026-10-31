@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from google import genai
 from google.genai import types
@@ -143,6 +144,7 @@ def generate_grounded_answer(
             api_key=ai_cfg.api_key,
             http_options=types.HttpOptions(timeout=25_000),
         )
+        logger.info("[chat_qa] Starting Gemini generate_content: model=%s", ai_cfg.model_name)
         response = client.models.generate_content(
             model=ai_cfg.model_name,
             contents=f"Question:\n{question}\n\nSource excerpts:\n{sources}",
@@ -158,6 +160,7 @@ def generate_grounded_answer(
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
+        logger.info("[chat_qa] Gemini response received: %s", response.text)
         answer = response.text
         if not answer or not answer.strip():
             raise GeminiRequestFailed
@@ -194,6 +197,8 @@ def generate_quiz_draft(
             api_key=ai_cfg.api_key,
             http_options=types.HttpOptions(timeout=25_000),
         )
+        start_time = time.time()
+        logger.info("[quiz] Starting Gemini generate_content: model=%s", ai_cfg.model_name)
         response = client.models.generate_content(
             model=ai_cfg.model_name,
             contents=(
@@ -211,6 +216,7 @@ def generate_quiz_draft(
                 response_schema=GeneratedQuiz,
             ),
         )
+        logger.info("[quiz] Gemini response received in %.2f sec", time.time() - start_time)
         parsed = response.parsed
         draft = GeneratedQuiz.model_validate(parsed) if parsed is not None else GeneratedQuiz.model_validate_json(response.text or "")
         if any(len(question.options) != 4 for question in draft.questions):
@@ -306,6 +312,8 @@ def _generate_study_artifact(
     )
     client = None
     try:
+        start_time = time.time()
+        logger.info("[study_artifact] Starting Gemini generate_content: model=%s, task=%s", ai_cfg.model_name, task_type)
         client = genai.Client(
             api_key=ai_cfg.api_key,
             http_options=types.HttpOptions(timeout=25_000),
@@ -324,6 +332,7 @@ def _generate_study_artifact(
                 response_schema=response_schema,
             ),
         )
+        logger.info("[study_artifact] Gemini response received in %.2f sec", time.time() - start_time)
         if response.parsed is not None:
             draft = response_schema.model_validate(response.parsed)
         else:
