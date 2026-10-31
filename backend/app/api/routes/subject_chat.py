@@ -224,6 +224,7 @@ def chat_with_context(
                 system_instruction=system_prompt,
                 temperature=config.temperature,
                 max_output_tokens=config.max_output_tokens,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         answer = response.text
