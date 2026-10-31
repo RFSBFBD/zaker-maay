@@ -155,6 +155,7 @@ def generate_grounded_answer(
                 ),
                 temperature=ai_cfg.temperature,
                 max_output_tokens=ai_cfg.max_output_tokens,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         answer = response.text

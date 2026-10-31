@@ -58,7 +58,7 @@ def resolve_ai_config(
     base_default_model = default_model if default_model is not None else (settings.gemini_model or "gemini-3.5-flash")
 
     defaults: dict[str, tuple[float, int]] = {
-        "chat_qa": (0.2, 900),
+        "chat_qa": (0.2, 2048),
         "quiz_generation": (0.2, 1800),
         "flashcards": (0.2, 3000),
         "concept_map": (0.2, 3000),
