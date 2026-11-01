@@ -459,6 +459,58 @@ def generate_notebook_guide(
             client.close()
 
 
+def generate_follow_up_suggestions(
+    last_answer: str,
+    *,
+    db: Session | None = None,
+) -> list[str]:
+    """Generate 2-3 short, relevant follow-up questions for the student based on the AI's last answer."""
+    settings = get_settings()
+    ai_cfg = resolve_ai_config(
+        "chat_qa",
+        db=db,
+        default_model=settings.gemini_model,
+        default_key=settings.gemini_api_key,
+    )
+    if not ai_cfg.api_key:
+        return []
+
+    client = None
+    try:
+        client = genai.Client(
+            api_key=ai_cfg.api_key,
+            http_options=types.HttpOptions(timeout=10_000),
+        )
+        response = client.models.generate_content(
+            model=ai_cfg.model_name,
+            contents=(
+                "Based on this educational explanation, suggest 3 short, natural follow-up questions an interested student might ask next. "
+                "Output ONLY a JSON array of 3 strings in the same language as the text (e.g. Arabic).\n\n"
+                f"Explanation:\n{last_answer[:1500]}"
+            ),
+            config=types.GenerateContentConfig(
+                temperature=0.4,
+                max_output_tokens=300,
+                response_mime_type="application/json",
+            ),
+        )
+        if response.text:
+            import json
+            try:
+                suggestions = json.loads(response.text)
+                if isinstance(suggestions, list):
+                    return [str(s).strip() for s in suggestions if str(s).strip()][:3]
+            except Exception:
+                pass
+        return []
+    except Exception as exc:
+        logger.warning("Failed to generate follow-up suggestions: %s", exc)
+        return []
+    finally:
+        if client is not None:
+            client.close()
+
+
 def generate_concept_illustration(
     prompt: str,
     context: str = "",

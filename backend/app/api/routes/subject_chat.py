@@ -46,6 +46,7 @@ class ChatResponse(BaseModel):
     no_resources: bool = False
     out_of_scope: bool = False
     inquiry_id: UUID | None = None
+    suggested_replies: list[str] | None = None
 
 
 class ThreadResponse(BaseModel):
@@ -532,6 +533,17 @@ def chat(
             detail=f"Internal Server Error: {str(exc)}",
         ) from exc
 
+    # 5.1 Generate dynamic follow-up suggestions (Bug #4)
+    suggested_replies = None
+    if "[IMAGE_GENERATED:" not in raw_answer:
+        try:
+            suggested_replies = gemini_service.generate_follow_up_suggestions(
+                last_answer=raw_answer,
+                db=db,
+            )
+        except Exception as e:
+            logger.warning("Failed to generate follow-up suggestions: %s", e)
+
     out_of_scope = False
     inquiry_id = None
     answer = raw_answer
@@ -578,4 +590,5 @@ def chat(
         no_resources=False,
         out_of_scope=out_of_scope,
         inquiry_id=inquiry_id,
+        suggested_replies=suggested_replies,
     )

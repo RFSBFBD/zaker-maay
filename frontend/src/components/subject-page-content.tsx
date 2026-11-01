@@ -52,6 +52,7 @@ type ChatResponse = {
   out_of_scope?: boolean;
   inquiry_id?: string | null;
   thread_id?: string;
+  suggested_replies?: string[];
 };
 
 type ChatThreadItem = {
@@ -258,6 +259,7 @@ function FullScreenChat({
   onSwitchToLibrary: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
+  const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
   const [threads, setThreads] = useState<ChatThreadItem[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [showThreadsDrawer, setShowThreadsDrawer] = useState(false);
@@ -308,6 +310,7 @@ function FullScreenChat({
     setActiveThreadId(threadId);
     setError(null);
     setShowThreadsDrawer(false);
+    setSuggestedReplies([]);
     try {
       const headers = await getHeaders();
       const rawMessages = await apiRequest<PersistedMessageItem[]>(
@@ -342,6 +345,7 @@ function FullScreenChat({
   function handleNewChat() {
     setActiveThreadId(null);
     setMessages([WELCOME_MESSAGE]);
+    setSuggestedReplies([]);
     setError(null);
     setShowThreadsDrawer(false);
   }
@@ -409,6 +413,7 @@ function FullScreenChat({
         out_of_scope: response.out_of_scope,
       };
       setMessages((prev) => [...prev, assistantMessage]);
+      setSuggestedReplies(response.suggested_replies || []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر الحصول على إجابة من المساعد.");
     } finally {
@@ -848,7 +853,7 @@ function FullScreenChat({
           }}
           aria-label="اقتراحات سريعة"
         >
-          {QUICK_PROMPTS.map((prompt, idx) => (
+          {(suggestedReplies.length > 0 ? suggestedReplies : QUICK_PROMPTS).map((prompt, idx) => (
             <button
               key={idx}
               type="button"
