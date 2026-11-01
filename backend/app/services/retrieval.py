@@ -96,60 +96,42 @@ def retrieve_for_subject(db: Session, *, subject_id: UUID, query: str, limit: in
 
 
 def sample_for_subject(db: Session, *, subject_id: UUID, limit: int = 4) -> list[RetrievedPassage]:
+    """Sample resource chunks only — used for quiz/flashcard generation.
+    YouTube transcript chunks are intentionally excluded because quiz/study
+    artifact generation stores source_resource_id pointing to Resource rows,
+    and mixing in YouTubeLink IDs would violate that invariant.
+    """
     rows = db.execute(
         select(ResourceChunk, Resource)
         .join(Resource, Resource.id == ResourceChunk.resource_id)
         .where(Resource.subject_id == subject_id, Resource.processing_status.in_(("ready", "truncated")))
         .order_by(Resource.created_at, Resource.file_name, ResourceChunk.chunk_index)
     ).all()
-    yt_rows = db.execute(
-        select(YouTubeChunk, YouTubeLink)
-        .where(YouTubeLink.subject_id == subject_id, YouTubeLink.processing_status == "ready")
-        .order_by(YouTubeLink.created_at, YouTubeChunk.chunk_index)
-    ).all()
-
-    selected: list[tuple[ResourceChunk | YouTubeChunk, object, UUID]] = []
+    selected: list[tuple[ResourceChunk, Resource]] = []
     seen_resources: set[UUID] = set()
     for chunk, resource in rows:
         if resource.id not in seen_resources:
-            selected.append((chunk, resource, resource.id))
+            selected.append((chunk, resource))
             seen_resources.add(resource.id)
             if len(selected) == limit:
                 break
     if len(selected) < limit:
-        selected_ids = {chunk.id for chunk, _, _ in selected}
+        selected_ids = {chunk.id for chunk, _ in selected}
         for chunk, resource in rows:
             if chunk.id in selected_ids:
                 continue
-            selected.append((chunk, resource, resource.id))
+            selected.append((chunk, resource))
             selected_ids.add(chunk.id)
             if len(selected) >= limit:
                 break
-
-    for chunk, yt_link in yt_rows[:2]:
-        if len(selected) >= limit:
-            break
-        selected.append((chunk, yt_link, yt_link.id))
-        seen_resources.add(yt_link.id)
-
-    result = []
-    for chunk, source, rid in selected[: max(1, min(limit, 8))]:
-        if isinstance(source, Resource):
-            file_name = source.file_name
-            page_number = chunk.page_number
-        elif isinstance(source, YouTubeLink):
-            file_name = f"YouTube: {source.title or source.video_id}"
-            page_number = None
-        else:
-            continue
-        result.append(
-            RetrievedPassage(
-                resource_id=rid,
-                file_name=file_name,
-                page_number=page_number,
-                chunk_index=chunk.chunk_index,
-                content=chunk.content,
-                score=1.0,
-            )
+    return [
+        RetrievedPassage(
+            resource_id=resource.id,
+            file_name=resource.file_name,
+            page_number=chunk.page_number,
+            chunk_index=chunk.chunk_index,
+            content=chunk.content,
+            score=1.0,
         )
-    return result
+        for chunk, resource in selected[: max(1, min(limit, 8))]
+    ]
