@@ -25,6 +25,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.services.ai_router import ResolvedAIConfig, resolve_ai_config
+from app.services import gemini as gemini_service
 
 logger = logging.getLogger(__name__)
 
@@ -360,7 +361,25 @@ def delete_thread(
     return {"status": "ok", "message": "تم حذف جلسة المحادثة."}
 
 
-# ── MAIN CHAT ENDPOINT WITH PERSISTENCE ────────────────────────────────────
+# ── INTENT DETECTION ──────────────────────────────────────────────────────
+
+# Arabic and English keywords that indicate the user wants an image/illustration generated
+_IMAGE_REQUEST_KEYWORDS = [
+    "ارسم", "رسم", "صورة", "img", "diagram", "schema",
+    "Show me", "draw", "image", "Illustration", "Concept",
+]
+
+
+def _is_image_request(message: str) -> bool:
+    """Check if the user's message is requesting an image/illustration."""
+    msg_lower = message.strip().lower()
+    for kw in _IMAGE_REQUEST_KEYWORDS:
+        if kw.lower() in msg_lower:
+            return True
+    return False
+
+
+# ── MAIN CHAT ENDPOINT WITH PERSISTENCE ──────────────────────────────────────
 
 @router.post("/", response_model=ChatResponse)
 def chat(
@@ -371,6 +390,60 @@ def chat(
 ) -> ChatResponse:
     """Send question, get AI response, and persist both in chat thread history."""
     _accessible_subject(db, subject_id, profile)
+
+    # 0. Check if this is an image generation request
+    if _is_image_request(payload.message):
+        try:
+            from app.services import gemini as gemini_service
+            result = gemini_service.generate_concept_illustration(
+                prompt=payload.message,
+                db=db,
+            )
+            # Return the generated image in the chat response
+            # The frontend expects answer to contain the text, and media for images
+            media_type = result.get("type", "svg")
+            media_data = result.get("svg") or result.get("image_url")
+            title = result.get("title", payload.message)
+
+            # Mark this as an image response by including media in the answer flow
+            # We'll set a flag and include the image data
+            raw_answer = f"[IMAGE_GENERATED:{media_type}:{title}]"
+            # Save as a normal answer but the frontend will handle the media
+            out_of_scope = False
+            inquiry_id = None
+
+            # Save assistant message with image info
+            asst_msg = DBChatMessage(
+                id=uuid4(),
+                thread_id=thread.id if thread else uuid4(),
+                role="assistant",
+                content=raw_answer,
+                no_resources=False,
+                out_of_scope=out_of_scope,
+            )
+            db.add(asst_msg)
+            db.commit()
+
+            # Also need to update thread title if new
+            if thread and thread.title == "محادثة جديدة":
+                clean_title = payload.message.strip().replace("\n", " ")
+                if len(clean_title) > 40:
+                    clean_title = clean_title[:38] + "…"
+                thread.title = clean_title
+                db.commit()
+
+            return ChatResponse(
+                answer=raw_answer,
+                thread_id=thread.id if thread else uuid4(),
+                message_id=asst_msg.id,
+                no_resources=False,
+                out_of_scope=out_of_scope,
+                # Include media info via a special mechanism
+                # The frontend checks for [IMAGE_GENERATED:] prefix
+            )
+        except Exception as e:
+            logger.warning("Image generation from chat failed: %s", e)
+            # Fall through to normal text handling below
 
     # 1. Resolve or create chat thread
     thread: ChatThread | None = None
