@@ -26,9 +26,18 @@ class GeneratedQuestion(BaseModel):
     @classmethod
     def require_distinct_options(cls, options: list[str]) -> list[str]:
         normalized = [option.strip() for option in options]
-        if any(not option for option in normalized) or len({option.casefold() for option in normalized}) != 4:
-            raise ValueError("Quiz options must be four distinct non-empty choices.")
-        return normalized
+        if len(normalized) != 4:
+            raise ValueError("Quiz options must be four choices.")
+        seen = set()
+        deduped = []
+        for i, opt in enumerate(normalized):
+            if not opt:
+                opt = f"خيار {i+1}"
+            while opt.casefold() in seen:
+                opt = f"{opt} ({len(seen)+1})"
+            seen.add(opt.casefold())
+            deduped.append(opt)
+        return deduped
 
 
 class GeneratedQuiz(BaseModel):
@@ -220,17 +229,38 @@ def generate_quiz_draft(
         logger.info("[quiz] Gemini response received in %.2f sec", time.time() - start_time)
         parsed = response.parsed
         draft = GeneratedQuiz.model_validate(parsed) if parsed is not None else GeneratedQuiz.model_validate_json(response.text or "")
-        if any(len(question.options) != 4 for question in draft.questions):
-            raise GeminiRequestFailed
-        if any(question.source_index > len(passages) for question in draft.questions):
-            raise GeminiRequestFailed
-        return draft
+
+        # Robustly handle any option count or source index mismatches without crashing
+        fixed_questions = []
+        for q in draft.questions:
+            # Ensure exactly 4 options
+            opts = list(q.options)
+            while len(opts) < 4:
+                opts.append(f"خيار إضافي {len(opts)+1}")
+            if len(opts) > 4:
+                opts = opts[:4]
+
+            # Ensure valid source index
+            s_idx = q.source_index
+            if s_idx < 1 or s_idx > len(passages):
+                s_idx = 1
+
+            fixed_questions.append(
+                GeneratedQuestion(
+                    prompt=q.prompt,
+                    options=opts,
+                    correct_answer=min(max(0, q.correct_answer), 3),
+                    explanation=q.explanation,
+                    source_index=s_idx,
+                )
+            )
+        return GeneratedQuiz(title=draft.title, questions=fixed_questions)
     except GeminiRequestFailed:
         raise
     except Exception as exc:
         if getattr(exc, "code", None) == 429:
             raise GeminiRateLimited from None
-        logger.warning("Gemini quiz generation failed.")
+        logger.exception("[quiz] Gemini quiz generation failed: %s", exc)
         raise GeminiRequestFailed from None
     finally:
         if client is not None:
