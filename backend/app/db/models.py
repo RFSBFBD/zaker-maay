@@ -291,11 +291,29 @@ class AIModelConfig(Base):
     temperature: Mapped[float] = mapped_column(nullable=False, default=0.2, server_default="0.2")
     max_output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=2000, server_default="2000")
     is_active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
+    fallback_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class OrchestratorDecision(Base):
+    __tablename__ = "orchestrator_decisions"
+    __table_args__ = (
+        Index("ix_orchestrator_decisions_created_at", "created_at"),
+        Index("ix_orchestrator_decisions_subject_id", "subject_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    subject_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    request_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    plan_json: Mapped[str] = mapped_column(Text, nullable=False)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    success: Mapped[bool] = mapped_column(nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class StudentInquiry(Base):
