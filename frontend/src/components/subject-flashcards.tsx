@@ -88,7 +88,20 @@ export function SubjectFlashcards({ subjectId }: { subjectId: string }) {
         },
         55_000
       );
-      setArtifacts((prev) => [created, ...prev.filter((a) => a.id !== created.id)]);
+      // Replace any existing flashcard artifact for this subject with the new one,
+      // instead of adding a duplicate. This prevents duplicate decks when user
+      // regenerates flashcards.
+      setArtifacts((prev) => {
+        const existingIndex = prev.findIndex((a) => a.kind === "flashcards");
+        if (existingIndex >= 0) {
+          // Replace existing: remove old, add new at beginning
+          const newList = [...prev];
+          newList.splice(existingIndex, 1, created);
+          return [created, ...newList.filter((a) => a.id !== created.id)];
+        }
+        // No existing: add new at beginning
+        return [created, ...prev.filter((a) => a.id !== created.id)];
+      });
       setActiveArtifact(created);
       setCurrentCardIndex(0);
       setIsFlipped(false);
@@ -248,8 +261,9 @@ export function SubjectFlashcards({ subjectId }: { subjectId: string }) {
               justifyContent: "space-between",
               alignItems: "center",
               textAlign: "center",
-              transition: "transform 0.2s, background 0.2s",
+              transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1) both",
               userSelect: "none",
+              transformStyle: "preserve-3d",
             }}
           >
             {/* Top Indicator */}
