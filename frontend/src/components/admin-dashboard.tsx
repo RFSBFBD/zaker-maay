@@ -44,8 +44,20 @@ type AIConfig = {
   temperature: number;
   max_output_tokens: number;
   is_active: boolean;
+  fallback_model: string | null;
   description: string | null;
   updated_at: string | null;
+};
+
+type OrchestratorDecision = {
+  id: string;
+  subject_id: string | null;
+  request_type: string;
+  plan_json: string;
+  result_json: string | null;
+  error_message: string | null;
+  success: boolean;
+  created_at: string;
 };
 
 type AdminInquiryItem = {
@@ -103,7 +115,7 @@ function getActiveStatus(iso: string | null): { label: string; className: string
 }
 
 export function AdminDashboard() {
-  const [tab, setTab] = useState<"analytics" | "users" | "ai" | "inquiries" | "skills">("analytics");
+  const [tab, setTab] = useState<"analytics" | "users" | "ai" | "inquiries" | "skills" | "orchestrator">("analytics");
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [aiConfigs, setAiConfigs] = useState<AIConfig[]>([]);
@@ -130,9 +142,9 @@ export function AdminDashboard() {
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [tempInput, setTempInput] = useState(0.2);
   const [tokensInput, setTokensInput] = useState(2000);
+  const [fallbackModelInput, setFallbackModelInput] = useState("");
   const [descInput, setDescInput] = useState("");
   const [testResult, setTestResult] = useState<string | null>(null);
-
   const getHeaders = useCallback(async () => {
     const {
       data: { session },
@@ -141,6 +153,8 @@ export function AdminDashboard() {
     if (sessionError || !session) throw new Error("انتهت الجلسة. سجّل الدخول مجدداً.");
     return { Authorization: `Bearer ${session.access_token}` };
   }, []);
+
+  const [orchestratorDecisions, setOrchestratorDecisions] = useState<OrchestratorDecision[]>([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -153,18 +167,20 @@ export function AdminDashboard() {
         }, 1500);
         return;
       }
-      const [analyticsData, usersData, aiData, inqData, skillsData] = await Promise.all([
+      const [analyticsData, usersData, aiData, inqData, skillsData, decisionsData] = await Promise.all([
         apiRequest<Analytics>("/api/v1/admin/analytics", { headers }),
         apiRequest<UserItem[]>("/api/v1/admin/users", { headers }),
         apiRequest<AIConfig[]>("/api/v1/admin/ai-configs", { headers }),
         apiRequest<AdminInquiryItem[]>("/api/v1/inquiries/admin/all", { headers }).catch(() => []),
         apiRequest<AgentSkillItem[]>("/api/v1/admin/skills", { headers }).catch(() => []),
+        apiRequest<OrchestratorDecision[]>("/api/v1/admin/orchestrator-decisions", { headers }).catch(() => []),
       ]);
       setAnalytics(analyticsData);
       setUsers(usersData);
       setAiConfigs(aiData);
       setInquiries(inqData);
       setSkills(skillsData);
+      setOrchestratorDecisions(decisionsData);
       setError(null);
     } catch {
       setError("⛔ عذراً، لا تملك صلاحية مدير المنصة (Admin). جاري تحويلك للصفحة الرئيسية...");
@@ -221,6 +237,7 @@ export function AdminDashboard() {
     setApiKeyInput("");
     setTempInput(cfg.temperature);
     setTokensInput(cfg.max_output_tokens);
+    setFallbackModelInput(cfg.fallback_model || "");
     setDescInput(cfg.description || "");
     setTestResult(null);
   }
@@ -241,6 +258,7 @@ export function AdminDashboard() {
           api_key: apiKeyInput.trim() || undefined,
           temperature: tempInput,
           max_output_tokens: tokensInput,
+          fallback_model: fallbackModelInput.trim() || undefined,
           description: descInput.trim() || undefined,
         }),
       });
@@ -447,6 +465,13 @@ export function AdminDashboard() {
                   type="button"
                 >
                   🧠 معارف ومهارات الوكيل ({skills.length})
+                </button>
+                <button
+                  className={`admin-tab-btn ${tab === "orchestrator" ? "active" : ""}`}
+                  onClick={() => setTab("orchestrator")}
+                  type="button"
+                >
+                  🤖 سجل قرارات الوكيل ({orchestratorDecisions.length})
                 </button>
               </div>
 
@@ -815,6 +840,92 @@ export function AdminDashboard() {
               )}
 
               {/* TAB 4: AI MODELS CONFIG */}
+              {/* TAB 6: ORCHESTRATOR DECISIONS */}
+              {tab === "orchestrator" && (
+                <div>
+                  <div className="upload-panel" style={{ margin: "0 0 20px" }}>
+                    <h2>سجل قرارات الوكيل Orchestrator</h2>
+                    <p className="privacy-note">
+                      يعرض هذا السجل القرارات التي اتخذها الوكيل لكل طلب: أنواع المهام المخططة، النماذج المستخدمة،
+                      ونتائج التنفيذ. يساعد في تتبع أداء النظام وتشخيص المشاكل.
+                    </p>
+                  </div>
+
+                  {orchestratorDecisions.length === 0 ? (
+                    <p className="state-card">لا توجد قرارات مسجلة بعد. ستظهر هنا بمجرد بدء استخدام المساعدات الذكية.</p>
+                  ) : (
+                    <div className="admin-table-container">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>النوع</th>
+                            <th>الحالة</th>
+                            <th>المخطط</th>
+                            <th>الخطأ</th>
+                            <th>التاريخ</th>
+                            <th>تفاصيل</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {orchestratorDecisions.map((dec) => (
+                            <tr key={dec.id}>
+                              <td>
+                                <span className="token-badge">{dec.request_type}</span>
+                              </td>
+                              <td>
+                                <span
+                                  style={{
+                                    fontSize: 12,
+                                    padding: "3px 8px",
+                                    borderRadius: 12,
+                                    fontWeight: 700,
+                                    background: dec.success ? "#e7f0e5" : "#fff0ed",
+                                    color: dec.success ? "#2e6930" : "#9b3f32",
+                                  }}
+                                >
+                                  {dec.success ? "نجح ✓" : "فشل ✗"}
+                                </span>
+                              </td>
+                              <td style={{ maxWidth: 320 }}>
+                                <code style={{ fontSize: 12, direction: "ltr" }}>{dec.plan_json}</code>
+                              </td>
+                              <td style={{ maxWidth: 200 }}>
+                                {dec.error_message ? (
+                                  <span style={{ color: "#9b3f32", fontSize: 12 }}>{dec.error_message}</span>
+                                ) : (
+                                  <span style={{ color: "var(--muted)", fontSize: 12 }}>—</span>
+                                )}
+                              </td>
+                              <td>{formatDate(dec.created_at)}</td>
+                              <td>
+                                <details style={{ fontSize: 12, cursor: "pointer" }}>
+                                  <summary style={{ color: "var(--green)" }}>عرض</summary>
+                                  <pre
+                                    style={{
+                                      whiteSpace: "pre-wrap",
+                                      marginTop: 8,
+                                      padding: 8,
+                                      background: "#f8f9fa",
+                                      borderRadius: 6,
+                                      maxHeight: 300,
+                                      overflowY: "auto",
+                                      direction: "ltr",
+                                      textAlign: "left",
+                                    }}
+                                  >
+                                    {dec.result_json || dec.plan_json}
+                                  </pre>
+                                </details>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {tab === "ai" && (
                 <div>
                   <div className="upload-panel" style={{ margin: "0 0 20px" }}>
@@ -905,6 +1016,23 @@ export function AdminDashboard() {
                         </div>
 
                         <div>
+                          <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>
+                            نموذجFallback (اختياري - 失败时自动切换):
+                          </label>
+                          <input
+                            value={fallbackModelInput}
+                            onChange={(e) => setFallbackModelInput(e.target.value)}
+                            placeholder="例如: gemini-3.5-flash-lite"
+                            style={{
+                              width: "100%",
+                              padding: "10px",
+                              border: "1px solid var(--line)",
+                              borderRadius: 6,
+                            }}
+                          />
+                        </div>
+
+                        <div>
                           <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>وصف المهمة:</label>
                           <input
                             value={descInput}
@@ -983,6 +1111,12 @@ export function AdminDashboard() {
                             <span>حد التوكنز:</span>
                             <strong>{cfg.max_output_tokens}</strong>
                           </div>
+                          {cfg.fallback_model && (
+                            <div>
+                              <span>Fallback模型:</span>
+                              <strong style={{ color: "var(--green)" }}>{cfg.fallback_model}</strong>
+                            </div>
+                          )}
                         </div>
 
                         <div

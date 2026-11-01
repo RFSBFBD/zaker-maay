@@ -13,6 +13,7 @@ from app.core.auth import get_current_profile
 from app.core.config import get_settings
 from app.db.models import (
     AIModelConfig,
+    OrchestratorDecision,
     QuizAttempt,
     Resource,
     StudyArtifact,
@@ -73,6 +74,7 @@ class RoleUpdatePayload(BaseModel):
 
 
 class AIConfigItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     task_type: str
     task_label: str
     model_name: str
@@ -80,6 +82,7 @@ class AIConfigItem(BaseModel):
     temperature: float
     max_output_tokens: int
     is_active: bool
+    fallback_model: str | None
     description: str | None
     updated_at: datetime | None
 
@@ -91,7 +94,19 @@ class AIConfigWritePayload(BaseModel):
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
     max_output_tokens: int = Field(default=2000, ge=64, le=65536)
     is_active: bool = True
+    fallback_model: str | None = Field(default=None, max_length=128)
     description: str | None = Field(default=None, max_length=255)
+
+
+class OrchestratorDecisionItem(BaseModel):
+    id: str
+    subject_id: str | None
+    request_type: str
+    plan_json: str
+    result_json: str | None
+    error_message: str | None
+    success: bool
+    created_at: datetime
 
 
 class AIConfigTestPayload(BaseModel):
@@ -255,6 +270,7 @@ def get_ai_configs(
                 temperature=rec.temperature if rec else resolved.temperature,
                 max_output_tokens=rec.max_output_tokens if rec else resolved.max_output_tokens,
                 is_active=rec.is_active if rec else True,
+                fallback_model=rec.fallback_model if rec else None,
                 description=rec.description if rec else label,
                 updated_at=rec.updated_at if rec else None,
             )
@@ -281,6 +297,7 @@ def upsert_ai_config(
             temperature=payload.temperature,
             max_output_tokens=payload.max_output_tokens,
             is_active=payload.is_active,
+            fallback_model=payload.fallback_model.strip() if payload.fallback_model else None,
             description=payload.description.strip() if payload.description else None,
         )
         db.add(config)
@@ -297,6 +314,14 @@ def upsert_ai_config(
     db.commit()
     db.refresh(config)
 
+    if payload.fallback_model is not None:
+        config.fallback_model = payload.fallback_model.strip() or None
+    if payload.description is not None:
+        config.description = payload.description.strip()
+
+    db.commit()
+    db.refresh(config)
+
     return AIConfigItem(
         task_type=config.task_type,
         task_label=SUPPORTED_TASK_TYPES.get(config.task_type, config.task_type),
@@ -305,9 +330,37 @@ def upsert_ai_config(
         temperature=config.temperature,
         max_output_tokens=config.max_output_tokens,
         is_active=config.is_active,
+        fallback_model=config.fallback_model,
         description=config.description,
         updated_at=config.updated_at,
     )
+
+
+@router.get("/orchestrator-decisions", response_model=list[OrchestratorDecisionItem])
+def get_orchestrator_decisions(
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+    limit: int = 50,
+) -> list[OrchestratorDecisionItem]:
+    _require_admin(profile)
+    decisions = db.scalars(
+        select(OrchestratorDecision)
+        .order_by(OrchestratorDecision.created_at.desc())
+        .limit(limit)
+    ).all()
+    return [
+        OrchestratorDecisionItem(
+            id=str(d.id),
+            subject_id=str(d.subject_id) if d.subject_id else None,
+            request_type=d.request_type,
+            plan_json=d.plan_json,
+            result_json=d.result_json,
+            error_message=d.error_message,
+            success=d.success,
+            created_at=d.created_at,
+        )
+        for d in decisions
+    ]
 
 
 @router.post("/ai-configs/test", response_model=AIConfigTestResponse)
