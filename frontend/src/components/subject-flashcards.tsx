@@ -85,7 +85,8 @@ export function SubjectFlashcards({ subjectId }: { subjectId: string }) {
           method: "POST",
           headers: { ...headers, "Content-Type": "application/json" },
           body: JSON.stringify({ kind: "flashcards" }),
-        }
+        },
+        55_000
       );
       setArtifacts((prev) => [created, ...prev.filter((a) => a.id !== created.id)]);
       setActiveArtifact(created);
