@@ -1,4 +1,6 @@
+import logging
 import re
+import threading
 from datetime import datetime
 from typing import Annotated
 from urllib.parse import parse_qs, urlsplit
@@ -6,14 +8,19 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.routes.resources import _accessible_subject
 from app.core.auth import get_current_profile
-from app.db.models import Subject, UserProfile, YouTubeLink
+from app.db.models import Subject, UserProfile, YouTubeLink, YouTubeChunk
 from app.db.session import get_db
+from app.services.youtube_transcript import fetch_youtube_transcript
+
+logger = logging.getLogger(__name__)
+CHUNK_SIZE = 1200
+CHUNK_OVERLAP = 180
 
 router = APIRouter(prefix="/api/v1/subjects/{subject_id}/youtube-links", tags=["youtube"])
 VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -64,6 +71,8 @@ class YouTubeLinkResponse(BaseModel):
     video_id: str
     url: str
     title: str | None
+    processing_status: str
+    transcript_available: bool = False
     created_at: datetime
 
 
@@ -90,6 +99,56 @@ def list_youtube_links(
     )
 
 
+def _split_transcript(text: str) -> list[tuple[int, str]]:
+    """Split transcript text into chunks of CHUNK_SIZE with CHUNK_OVERLAP."""
+    chunks: list[tuple[int, str]] = []
+    start = 0
+    while start < len(text):
+        end = min(start + CHUNK_SIZE, len(text))
+        if end < len(text):
+            boundary = text.rfind(" ", start + CHUNK_SIZE // 2, end)
+            if boundary > start:
+                end = boundary
+        piece = text[start:end].strip()
+        if piece:
+            chunks.append((len(chunks), piece))
+        if end == len(text):
+            break
+        start = max(start + 1, end - CHUNK_OVERLAP)
+    return chunks
+
+
+def _fetch_transcript_async(db: Session, link: YouTubeLink) -> None:
+    """Background fetch and store transcript for a YouTube link."""
+    try:
+        text = fetch_youtube_transcript(link.video_id)
+        if text is None:
+            link.processing_status = "no_captions"
+            db.commit()
+            return
+        link.transcript_text = text
+        link.transcript_language = "auto"
+        link.processing_status = "ready"
+        # Delete old chunks
+        db.execute(delete(YouTubeChunk).where(YouTubeChunk.youtube_link_id == link.id))
+        # Create new chunks
+        chunks = _split_transcript(text)
+        yt_chunks = [
+            YouTubeChunk(
+                youtube_link_id=link.id,
+                chunk_index=index,
+                content=chunk_text,
+            )
+            for index, chunk_text in chunks
+        ]
+        db.add_all(yt_chunks)
+        db.commit()
+    except Exception as exc:
+        logger.warning("Failed to fetch transcript for video %s: %s", link.video_id, exc)
+        link.processing_status = "failed"
+        db.commit()
+
+
 @router.post("", response_model=YouTubeLinkResponse, status_code=status.HTTP_201_CREATED)
 def add_youtube_link(
     subject_id: UUID,
@@ -107,6 +166,7 @@ def add_youtube_link(
         owner_id=profile.id,
         video_id=video_id,
         url=f"https://www.youtube.com/watch?v={video_id}",
+        processing_status="pending",
     )
     db.add(link)
     try:
@@ -115,6 +175,9 @@ def add_youtube_link(
         db.rollback()
         raise HTTPException(status_code=409, detail="This video is already linked to the subject.") from None
     db.refresh(link)
+    # Start async transcript fetch
+    t = threading.Thread(target=_fetch_transcript_async, args=(db, link), daemon=True)
+    t.start()
     return link
 
 

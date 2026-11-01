@@ -34,6 +34,8 @@ type YouTubeLink = {
   video_id: string;
   url: string;
   title: string | null;
+  processing_status: string;
+  transcript_available: boolean;
   created_at: string;
 };
 
@@ -380,7 +382,29 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
             {youtubeLinks.map((link) => (
               <article className="resource-item" key={link.id} style={{ display: "block" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <h3 style={{ fontSize: 16, margin: 0 }}>🎬 {link.title || "فيديو YouTube للمادة"}</h3>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <h3 style={{ fontSize: 16, margin: 0 }}>🎬 {link.title || "فيديو YouTube للمادة"}</h3>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        padding: "2px 8px",
+                        borderRadius: 10,
+                        background: link.transcript_available ? "var(--mint)" : "var(--surface-raised)",
+                        color: link.transcript_available ? "var(--green)" : "var(--muted)",
+                        border: `1px solid ${link.transcript_available ? "var(--green)" : "var(--line)"}`,
+                      }}
+                    >
+                      {link.processing_status === "ready"
+                        ? "✅ النص جاهز"
+                        : link.processing_status === "no_captions"
+                        ? "⚠️ لا توجد ترجمة"
+                        : link.processing_status === "pending"
+                        ? "⏳ جاري الاستخراج..."
+                        : link.processing_status === "failed"
+                        ? "❌ فشل"
+                        : "🔄"}
+                    </span>
+                  </div>
                   <div style={{ display: "flex", gap: 10 }}>
                     <a href={link.url} target="_blank" rel="noreferrer" className="text-button">
                       ↗️ فتح في YouTube

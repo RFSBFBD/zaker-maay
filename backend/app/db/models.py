@@ -169,8 +169,13 @@ class YouTubeLink(Base):
     __tablename__ = "youtube_links"
     __table_args__ = (
         CheckConstraint("length(video_id) = 11", name="ck_youtube_link_video_id_length"),
+        CheckConstraint(
+            "processing_status IN ('pending', 'processing', 'ready', 'no_captions', 'failed')",
+            name="ck_youtube_link_processing_status",
+        ),
         UniqueConstraint("subject_id", "video_id", name="uq_youtube_link_subject_video"),
         Index("ix_youtube_links_subject_created", "subject_id", "created_at"),
+        Index("ix_youtube_links_processing_status", "processing_status"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -179,7 +184,28 @@ class YouTubeLink(Base):
     video_id: Mapped[str] = mapped_column(String(11), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(String(255))
+    transcript_text: Mapped[str | None] = mapped_column(Text)
+    transcript_language: Mapped[str | None] = mapped_column(String(10))
+    processing_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class YouTubeChunk(Base):
+    __tablename__ = "youtube_chunks"
+    __table_args__ = (
+        CheckConstraint("length(trim(content)) > 0", name="ck_youtube_chunk_content_nonempty"),
+        UniqueConstraint("youtube_link_id", "chunk_index", name="uq_youtube_chunk_index"),
+        Index("ix_youtube_chunks_link_id", "youtube_link_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    youtube_link_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("youtube_links.id", ondelete="CASCADE"), nullable=False
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class StudyQuiz(Base):

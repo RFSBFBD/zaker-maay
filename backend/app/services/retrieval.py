@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Resource, ResourceChunk
+from app.db.models import Resource, ResourceChunk, YouTubeChunk, YouTubeLink
 
 ARABIC_DIACRITICS = re.compile(r"[\u064b-\u065f\u0670\u0640]")
 TOKEN_PATTERN = re.compile(r"[a-z0-9\u0600-\u06ff]+")
@@ -43,15 +43,21 @@ def retrieve_for_subject(db: Session, *, subject_id: UUID, query: str, limit: in
         .join(Resource, Resource.id == ResourceChunk.resource_id)
         .where(Resource.subject_id == subject_id, Resource.processing_status.in_(("ready", "truncated")))
     ).all()
-    if not rows:
+    resource_documents = [(chunk, resource, tokenize(chunk.content)) for chunk, resource in rows]
+    yt_rows = db.execute(
+        select(YouTubeChunk, YouTubeLink)
+        .where(YouTubeLink.subject_id == subject_id, YouTubeLink.processing_status == "ready")
+    ).all()
+    yt_documents = [(chunk, yt_link, tokenize(chunk.content)) for chunk, yt_link in yt_rows]
+    all_documents = resource_documents + yt_documents
+    if not all_documents:
         return []
-    documents = [(chunk, resource, tokenize(chunk.content)) for chunk, resource in rows]
     document_frequency: Counter[str] = Counter()
-    for _, _, tokens in documents:
+    for _, _, tokens in all_documents:
         document_frequency.update(set(tokens) & query_terms)
-    average_length = max(1.0, sum(len(tokens) for _, _, tokens in documents) / len(documents))
+    average_length = max(1.0, sum(len(tokens) for _, _, tokens in all_documents) / len(all_documents))
     ranked: list[RetrievedPassage] = []
-    for chunk, resource, tokens in documents:
+    for chunk, source, tokens in all_documents:
         frequencies = Counter(tokens)
         length = len(tokens)
         score = 0.0
@@ -59,20 +65,32 @@ def retrieve_for_subject(db: Session, *, subject_id: UUID, query: str, limit: in
             frequency = frequencies[term]
             if not frequency:
                 continue
-            inverse_frequency = math.log1p((len(documents) - document_frequency[term] + 0.5) / (document_frequency[term] + 0.5))
+            inverse_frequency = math.log1p((len(all_documents) - document_frequency[term] + 0.5) / (document_frequency[term] + 0.5))
             denominator = frequency + 1.2 * (0.25 + 0.75 * length / average_length)
             score += inverse_frequency * (frequency * 2.2 / denominator)
         if score > 0:
-            ranked.append(
-                RetrievedPassage(
-                    resource_id=resource.id,
-                    file_name=resource.file_name,
-                    page_number=chunk.page_number,
-                    chunk_index=chunk.chunk_index,
-                    content=chunk.content,
-                    score=score,
+            if isinstance(source, Resource):
+                ranked.append(
+                    RetrievedPassage(
+                        resource_id=source.id,
+                        file_name=source.file_name,
+                        page_number=chunk.page_number,
+                        chunk_index=chunk.chunk_index,
+                        content=chunk.content,
+                        score=score,
+                    )
                 )
-            )
+            elif isinstance(source, YouTubeLink):
+                ranked.append(
+                    RetrievedPassage(
+                        resource_id=source.id,
+                        file_name=f"YouTube: {source.title or source.video_id}",
+                        page_number=None,
+                        chunk_index=chunk.chunk_index,
+                        content=chunk.content,
+                        score=score,
+                    )
+                )
     ranked.sort(key=lambda passage: (-passage.score, passage.file_name, passage.chunk_index))
     return ranked[: max(1, min(limit, 8))]
 
@@ -84,31 +102,54 @@ def sample_for_subject(db: Session, *, subject_id: UUID, limit: int = 4) -> list
         .where(Resource.subject_id == subject_id, Resource.processing_status.in_(("ready", "truncated")))
         .order_by(Resource.created_at, Resource.file_name, ResourceChunk.chunk_index)
     ).all()
-    selected: list[tuple[ResourceChunk, Resource]] = []
+    yt_rows = db.execute(
+        select(YouTubeChunk, YouTubeLink)
+        .where(YouTubeLink.subject_id == subject_id, YouTubeLink.processing_status == "ready")
+        .order_by(YouTubeLink.created_at, YouTubeChunk.chunk_index)
+    ).all()
+
+    selected: list[tuple[ResourceChunk | YouTubeChunk, object, UUID]] = []
     seen_resources: set[UUID] = set()
     for chunk, resource in rows:
         if resource.id not in seen_resources:
-            selected.append((chunk, resource))
+            selected.append((chunk, resource, resource.id))
             seen_resources.add(resource.id)
             if len(selected) == limit:
                 break
     if len(selected) < limit:
-        selected_ids = {chunk.id for chunk, _ in selected}
+        selected_ids = {chunk.id for chunk, _, _ in selected}
         for chunk, resource in rows:
             if chunk.id in selected_ids:
                 continue
-            selected.append((chunk, resource))
+            selected.append((chunk, resource, resource.id))
             selected_ids.add(chunk.id)
             if len(selected) >= limit:
                 break
-    return [
-        RetrievedPassage(
-            resource_id=resource.id,
-            file_name=resource.file_name,
-            page_number=chunk.page_number,
-            chunk_index=chunk.chunk_index,
-            content=chunk.content,
-            score=1.0,
+
+    for chunk, yt_link in yt_rows[:2]:
+        if len(selected) >= limit:
+            break
+        selected.append((chunk, yt_link, yt_link.id))
+        seen_resources.add(yt_link.id)
+
+    result = []
+    for chunk, source, rid in selected[: max(1, min(limit, 8))]:
+        if isinstance(source, Resource):
+            file_name = source.file_name
+            page_number = chunk.page_number
+        elif isinstance(source, YouTubeLink):
+            file_name = f"YouTube: {source.title or source.video_id}"
+            page_number = None
+        else:
+            continue
+        result.append(
+            RetrievedPassage(
+                resource_id=rid,
+                file_name=file_name,
+                page_number=page_number,
+                chunk_index=chunk.chunk_index,
+                content=chunk.content,
+                score=1.0,
+            )
         )
-        for chunk, resource in selected[: max(1, min(limit, 8))]
-    ]
+    return result
