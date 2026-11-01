@@ -11,7 +11,8 @@ from app.core.auth import get_current_profile
 from app.api.routes import assistant as assistant_route
 from app.api.routes import quizzes as quizzes_route
 from app.db.base import Base
-from app.db.models import QuizAttempt, Resource, ResourceChunk, Subject, SubjectMembership, UserProfile
+from app.api.routes import subject_chat as subject_chat_route
+from app.db.models import ChatMessage as DBChatMessage, ChatThread, QuizAttempt, Resource, ResourceChunk, Subject, SubjectMembership, UserProfile
 from app.db.session import get_db
 from app.main import app
 from app.services.gemini import GeneratedQuiz, GeneratedQuestion
@@ -186,3 +187,50 @@ def test_quiz_submission_requires_exact_question_set(
     )
 
     assert response.status_code == 422
+
+
+def test_subject_chat_uses_question_relevant_chunks_and_cites_sources(
+    assistant_client: tuple[TestClient, Session, UserProfile, Subject, Subject], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, db, _, physics, _ = assistant_client
+
+    def fake_chat(*, question: str, passages: list, **kwargs: object) -> str:
+        return "Magnetism creates magnetic fields [S1]."
+
+    from app.services import gemini as gemini_service
+    monkeypatch.setattr(gemini_service, "generate_grounded_answer", fake_chat)
+    monkeypatch.setattr(
+        subject_chat_route.gemini_service,
+        "generate_follow_up_suggestions",
+        lambda *args, **kwargs: [],
+    )
+
+    response = client.post(
+        f"/api/v1/subjects/{physics.id}/chat/",
+        json={"message": "What creates magnetic fields?"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "Magnetism creates magnetic fields [S1]."
+    assert db.query(ChatThread).count() == 1
+    assert db.query(DBChatMessage).count() == 2
+
+
+def test_failed_subject_chat_does_not_persist_an_empty_thread(
+    assistant_client: tuple[TestClient, Session, UserProfile, Subject, Subject], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, db, _, physics, _ = assistant_client
+
+    def fail_chat(*args: object, **kwargs: object) -> str:
+        raise subject_chat_route.gemini_service.GeminiRequestFailed
+
+    from app.services import gemini as gemini_service
+    monkeypatch.setattr(gemini_service, "generate_grounded_answer", fail_chat)
+    response = client.post(
+        f"/api/v1/subjects/{physics.id}/chat/",
+        json={"message": "What creates magnetic fields?"},
+    )
+
+    assert response.status_code == 502
+    assert db.query(ChatThread).count() == 0
+    assert db.query(DBChatMessage).count() == 0

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.services.ai_router import resolve_ai_config
+from app.services.ai_router import ResolvedAIConfig, resolve_ai_config
 from app.services.retrieval import RetrievedPassage
 
 logger = logging.getLogger(__name__)
@@ -137,9 +137,13 @@ def generate_grounded_answer(
     passages: list[RetrievedPassage],
     *,
     db: Session | None = None,
+    _ai_config: ResolvedAIConfig | None = None,
 ) -> str:
-    settings = get_settings()
-    ai_cfg = resolve_ai_config("chat_qa", db=db, default_model=settings.gemini_model, default_key=settings.gemini_api_key)
+    if _ai_config is not None:
+        ai_cfg = _ai_config
+    else:
+        settings = get_settings()
+        ai_cfg = resolve_ai_config("chat_qa", db=db, default_model=settings.gemini_model, default_key=settings.gemini_api_key)
     if not ai_cfg.api_key:
         raise GeminiNotConfigured
     sources = "\n\n".join(
@@ -190,9 +194,13 @@ def generate_quiz_draft(
     passages: list[RetrievedPassage],
     *,
     db: Session | None = None,
+    _ai_config: ResolvedAIConfig | None = None,
 ) -> GeneratedQuiz:
-    settings = get_settings()
-    ai_cfg = resolve_ai_config("quiz_generation", db=db, default_model=settings.gemini_model, default_key=settings.gemini_api_key)
+    if _ai_config is not None:
+        ai_cfg = _ai_config
+    else:
+        settings = get_settings()
+        ai_cfg = resolve_ai_config("quiz_generation", db=db, default_model=settings.gemini_model, default_key=settings.gemini_api_key)
     if not ai_cfg.api_key:
         raise GeminiNotConfigured
     sources = "\n\n".join(
@@ -331,9 +339,13 @@ def _generate_study_artifact(
     task_type: str = "default",
     db: Session | None = None,
     max_output_tokens: int | None = None,
+    _ai_config: ResolvedAIConfig | None = None,
 ) -> BaseModel:
-    settings = get_settings()
-    ai_cfg = resolve_ai_config(task_type, db=db, default_model=settings.gemini_model, default_key=settings.gemini_api_key)
+    if _ai_config is not None:
+        ai_cfg = _ai_config
+    else:
+        settings = get_settings()
+        ai_cfg = resolve_ai_config(task_type, db=db, default_model=settings.gemini_model, default_key=settings.gemini_api_key)
     if not ai_cfg.api_key:
         raise GeminiNotConfigured
     sources = "\n\n".join(
@@ -391,6 +403,7 @@ def generate_flashcard_draft(
     passages: list[RetrievedPassage],
     *,
     db: Session | None = None,
+    _ai_config: ResolvedAIConfig | None = None,
 ) -> GeneratedFlashcardSet:
     draft = _generate_study_artifact(
         "Create 8 concise question-and-answer flashcards in the language of the excerpts. Use only supported facts.",
@@ -398,6 +411,7 @@ def generate_flashcard_draft(
         GeneratedFlashcardSet,
         task_type="flashcards",
         db=db,
+        _ai_config=_ai_config,
     )
     return GeneratedFlashcardSet.model_validate(draft)
 
@@ -546,19 +560,23 @@ def generate_concept_illustration(
     context: str = "",
     *,
     db: Session | None = None,
+    _ai_config: ResolvedAIConfig | None = None,
 ) -> dict[str, str]:
     """Generate an educational illustration or visual diagram for a concept.
-    
+
     Uses the configured image_generation / nano banana model if available,
     or generates an SVG/visual concept diagram as an ultra-reliable educational graphic.
     """
-    settings = get_settings()
-    ai_cfg = resolve_ai_config(
-        "image_generation",
-        db=db,
-        default_model=settings.gemini_model,
-        default_key=settings.gemini_api_key,
-    )
+    if _ai_config is not None:
+        ai_cfg = _ai_config
+    else:
+        settings = get_settings()
+        ai_cfg = resolve_ai_config(
+            "image_generation",
+            db=db,
+            default_model=settings.gemini_model,
+            default_key=settings.gemini_api_key,
+        )
     if not ai_cfg.api_key:
         raise GeminiNotConfigured
 

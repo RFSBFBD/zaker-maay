@@ -26,6 +26,7 @@ from app.db.models import (
 from app.db.session import get_db
 from app.services.ai_router import ResolvedAIConfig, resolve_ai_config
 from app.services import gemini as gemini_service
+from app.services.orchestrator import orchestrate_chat
 from app.services.retrieval import RetrievedPassage, retrieve_for_subject
 
 logger = logging.getLogger(__name__)
@@ -422,7 +423,6 @@ def chat(
     # 0. Check if this is an image generation request
     if _is_image_request(payload.message):
         try:
-            from app.services import gemini as gemini_service
             result = gemini_service.generate_concept_illustration(
                 prompt=payload.message,
                 db=db,
@@ -543,14 +543,18 @@ def chat(
     ai_cfg = resolve_ai_config(task_type="chat_qa", db=db, skill_level=skill)
     system_prompt = _build_system_prompt(db, subject_id, skill)
 
-    # 5. Call Gemini
+    # 5. Run through the orchestrator (handles multi-intent and fallback logic)
     try:
-        raw_answer = chat_with_context(
-            user_message=payload.message,
-            context=context,
-            system_prompt=system_prompt,
-            config=ai_cfg,
+        orch_result = orchestrate_chat(
+            message=payload.message,
+            subject_id=subject_id,
+            db=db,
+            passages=passages,
         )
+        if not orch_result.success:
+            db.rollback()
+            raise gemini_service.GeminiRequestFailed(orch_result.error)
+        raw_answer = orch_result.results.get("chat_qa") or ""
     except gemini_service.GeminiNotConfigured:
         db.rollback()
         raise HTTPException(
