@@ -98,8 +98,9 @@ class StudySession(Base):
         Index("ix_study_sessions_subject_id", "subject_id"),
         Index("ix_study_sessions_ends_at", "ends_at"),
         Index(
-            "uq_study_sessions_active_user",
+            "uq_study_sessions_active_user_subject",
             "user_id",
+            "subject_id",
             unique=True,
             postgresql_where=text("status = 'active'"),
             sqlite_where=text("status = 'active'"),

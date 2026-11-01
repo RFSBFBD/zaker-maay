@@ -47,17 +47,19 @@ def start_study_session(
     if is_member is None:
         raise SubjectAccessDenied
 
-    active = db.scalar(
+    # Allow one active session per subject; end any previous active session for the same subject
+    active_for_subject = db.scalar(
         select(StudySession).where(
             StudySession.user_id == user_id,
+            StudySession.subject_id == subject_id,
             StudySession.status == "active",
         )
     )
-    if active is not None:
-        if ensure_utc(active.planned_end_at) > server_now:
+    if active_for_subject is not None:
+        if ensure_utc(active_for_subject.planned_end_at) > server_now:
             raise ActiveSessionConflict
-        active.status = "completed"
-        active.ended_at = active.planned_end_at
+        active_for_subject.status = "completed"
+        active_for_subject.ended_at = active_for_subject.planned_end_at
         db.flush()
 
     session = StudySession(
