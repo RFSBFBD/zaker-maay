@@ -29,12 +29,13 @@ from app.services.ai_router import SUPPORTED_TASK_TYPES, resolve_ai_config
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 
-def _require_admin(profile: UserProfile) -> None:
-    if profile.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privilege required.",
-        )
+def _mask_key(key: str | None) -> str:
+    if not key:
+        return "المفتاح العام"
+    if len(key) <= 8:
+        return "****"
+    return f"{key[:4]}...{key[-4:]}"
+
 
 
 class AnalyticsResponse(BaseModel):
@@ -78,6 +79,7 @@ class AIConfigItem(BaseModel):
     task_type: str
     task_label: str
     model_name: str
+    api_key_masked: str
     has_custom_api_key: bool
     temperature: float
     max_output_tokens: int
@@ -266,6 +268,7 @@ def get_ai_configs(
                 task_type=task_type,
                 task_label=label,
                 model_name=rec.model_name if rec else resolved.model_name,
+                api_key_masked=_mask_key(rec.api_key) if rec and rec.api_key else "public",
                 has_custom_api_key=bool(rec and rec.api_key),
                 temperature=rec.temperature if rec else resolved.temperature,
                 max_output_tokens=rec.max_output_tokens if rec else resolved.max_output_tokens,
@@ -326,6 +329,7 @@ def upsert_ai_config(
         task_type=config.task_type,
         task_label=SUPPORTED_TASK_TYPES.get(config.task_type, config.task_type),
         model_name=config.model_name,
+        api_key_masked=_mask_key(config.api_key),
         has_custom_api_key=bool(config.api_key),
         temperature=config.temperature,
         max_output_tokens=config.max_output_tokens,
@@ -361,6 +365,49 @@ def get_orchestrator_decisions(
         )
         for d in decisions
     ]
+
+
+@router.delete("/ai-configs/{task_type}")
+def delete_ai_config(
+    task_type: str,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, str]:
+    _require_admin(profile)
+    config = db.scalar(select(AIModelConfig).where(AIModelConfig.task_type == task_type))
+    if config is None:
+        raise HTTPException(status_code=404, detail="الإعداد غير موجود.")
+    db.delete(config)
+    db.commit()
+    return {"status": "ok", "message": f"تم حذف إعداد مهمة {task_type}."}
+
+
+@router.patch("/ai-configs/{task_type}/toggle", response_model=AIConfigItem)
+def toggle_ai_config(
+    task_type: str,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> AIConfigItem:
+    _require_admin(profile)
+    config = db.scalar(select(AIModelConfig).where(AIModelConfig.task_type == task_type))
+    if config is None:
+        raise HTTPException(status_code=404, detail="الإعداد غير موجود.")
+    config.is_active = not config.is_active
+    db.commit()
+    db.refresh(config)
+    return AIConfigItem(
+        task_type=config.task_type,
+        task_label=SUPPORTED_TASK_TYPES.get(config.task_type, config.task_type),
+        model_name=config.model_name,
+        api_key_masked=_mask_key(config.api_key),
+        has_custom_api_key=bool(config.api_key),
+        temperature=config.temperature,
+        max_output_tokens=config.max_output_tokens,
+        is_active=config.is_active,
+        fallback_model=config.fallback_model,
+        description=config.description,
+        updated_at=config.updated_at,
+    )
 
 
 @router.post("/ai-configs/test", response_model=AIConfigTestResponse)

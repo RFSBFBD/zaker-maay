@@ -40,6 +40,7 @@ type AIConfig = {
   task_type: string;
   task_label: string;
   model_name: string;
+  api_key_masked: string;
   has_custom_api_key: boolean;
   temperature: number;
   max_output_tokens: number;
@@ -145,6 +146,8 @@ export function AdminDashboard() {
   const [fallbackModelInput, setFallbackModelInput] = useState("");
   const [descInput, setDescInput] = useState("");
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [taskTypeInput, setTaskTypeInput] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
   const getHeaders = useCallback(async () => {
     const {
       data: { session },
@@ -289,6 +292,95 @@ export function AdminDashboard() {
       setTestResult(res.ok ? `✅ ${res.message}` : `❌ ${res.message}`);
     } catch (cause) {
       setTestResult(`❌ خطأ في الاختبار: ${cause instanceof Error ? cause.message : "تعذر الاتصال"}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startAddConfig() {
+    setEditingConfig(null);
+    setIsAdding(true);
+    setModelInput("");
+    setApiKeyInput("");
+    setTempInput(0.2);
+    setTokensInput(2000);
+    setFallbackModelInput("");
+    setDescInput("");
+    setTestResult(null);
+    setTaskTypeInput("chat_qa");
+  }
+
+  function cancelAdd() {
+    setIsAdding(false);
+    setTaskTypeInput("");
+  }
+
+  async function handleDeleteConfig(cfg: AIConfig) {
+    if (!window.confirm(`هل تريد حذف إعداد نموذج مهمة «${cfg.task_label}»؟`)) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const headers = await getHeaders();
+      await apiRequest(`/api/v1/admin/ai-configs/${cfg.task_type}`, {
+        method: "DELETE",
+        headers: { ...headers, "Content-Type": "application/json" },
+      });
+      setAiConfigs((prev) => prev.filter((c) => c.task_type !== cfg.task_type));
+      setNotice(`تم حذف إعداد مهمة ${cfg.task_label}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر حذف إعداد النموذج.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleToggleConfig(cfg: AIConfig) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const headers = await getHeaders();
+      const updated = await apiRequest<AIConfig>(`/api/v1/admin/ai-configs/${cfg.task_type}/toggle`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+      });
+      setAiConfigs((prev) => prev.map((c) => (c.task_type === updated.task_type ? updated : c)));
+      setNotice(`تم ${updated.is_active ? "تفعيل" : "تعطيل"} مهمة ${updated.task_label}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر تغيير حالة الإعداد.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveNewConfig(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!taskTypeInput.trim() || !modelInput.trim()) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const headers = await getHeaders();
+      const created = await apiRequest<AIConfig>("/api/v1/admin/ai-configs", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task_type: taskTypeInput.trim(),
+          model_name: modelInput.trim(),
+          api_key: apiKeyInput.trim() || undefined,
+          temperature: tempInput,
+          max_output_tokens: tokensInput,
+          is_active: false,
+          fallback_model: fallbackModelInput.trim() || undefined,
+          description: descInput.trim() || undefined,
+        }),
+      });
+      setAiConfigs((prev) => [...prev, created]);
+      setNotice(`تم إضافة إعداد مهمة ${created.task_label} بنجاح.`);
+      setIsAdding(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر حفظ إعداد النموذج.");
     } finally {
       setBusy(false);
     }
@@ -928,32 +1020,74 @@ export function AdminDashboard() {
 
               {tab === "ai" && (
                 <div>
-                  <div className="upload-panel" style={{ margin: "0 0 20px" }}>
-                    <h2>إدارة وتوزيع نماذج الذكاء الاصطناعي (AI Router)</h2>
-                    <p className="privacy-note">
-                      لكل مهمة داخل المنصة يمكنك تعيين نموذج Gemini مختلف ومفتاح API مخصص وحدود توكنز للتحكم الكامل في
-                      الجودة والتكلفة.
-                    </p>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 16,
+                    }}
+                  >
+                    <div>
+                      <h2 style={{ margin: 0 }}>توجيه النماذج والـ API (AI Router)</h2>
+                      <p className="privacy-note" style={{ margin: "4px 0 0" }}>
+                        لكل مهمة داخل المنصة يمكنك تعيين نموذج مختلف ومفتاح API مخصص.
+                      </p>
+                    </div>
+                    <button
+                      className="session-start"
+                      style={{ margin: 0 }}
+                      onClick={() => void startAddConfig()}
+                      disabled={!!editingConfig || !!isAdding}
+                    >
+                      + إضافة جديد
+                    </button>
                   </div>
 
-                  {editingConfig && (
+                  {/* Add New Form */}
+                  {isAdding && (
                     <section className="upload-panel" style={{ border: "2px solid var(--green)", marginBottom: 24 }}>
-                      <h3 style={{ margin: "0 0 10px" }}>تعديل مهمة: {editingConfig.task_label}</h3>
-                      <form onSubmit={handleSaveConfig} style={{ display: "grid", gap: 12 }}>
-                        <div>
-                          <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>اسم النموذج (Model):</label>
-                          <input
-                            required
-                            value={modelInput}
-                            onChange={(e) => setModelInput(e.target.value)}
-                            placeholder="مثال: gemini-3.5-flash, gemini-3.5-flash-lite"
-                            style={{
-                              width: "100%",
-                              padding: "10px",
-                              border: "1px solid var(--line)",
-                              borderRadius: 6,
-                            }}
-                          />
+                      <h3 style={{ margin: "0 0 10px" }}>إضافة إعداد نموذج جديد</h3>
+                      <form onSubmit={handleSaveNewConfig} style={{ display: "grid", gap: 12 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                          <div>
+                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>نوع المهمة (Task Type):</label>
+                            <select
+                              value={taskTypeInput}
+                              onChange={(e) => setTaskTypeInput(e.target.value)}
+                              style={{
+                                width: "100%",
+                                padding: "10px",
+                                border: "1px solid var(--line)",
+                                borderRadius: 6,
+                              }}
+                            >
+                              <option value="chat_qa">chat_qa — أسئلة ومساعدة المذاكرة</option>
+                              <option value="quiz_generation">quiz_generation — توليد اختبارات</option>
+                              <option value="flashcards">flashcards — بطاقات استذكار</option>
+                              <option value="concept_map">concept_map — خرائط مفاهيم</option>
+                              <option value="study_notes">study_notes — مذكرات دراسية</option>
+                              <option value="audio_transcription">audio_transcription — تفريغ صوتي</option>
+                              <option value="image_generation">image_generation — توليد صور</option>
+                              <option value="document_ai">document_ai — تحليل مستندات</option>
+                              <option value="default">default — النموذج الافتراضي</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>اسم النموذج (Model):</label>
+                            <input
+                              required
+                              value={modelInput}
+                              onChange={(e) => setModelInput(e.target.value)}
+                              placeholder="مثال: gemini-3.5-flash"
+                              style={{
+                                width: "100%",
+                                padding: "10px",
+                                border: "1px solid var(--line)",
+                                borderRadius: 6,
+                              }}
+                            />
+                          </div>
                         </div>
 
                         <div>
@@ -964,7 +1098,7 @@ export function AdminDashboard() {
                             type="password"
                             value={apiKeyInput}
                             onChange={(e) => setApiKeyInput(e.target.value)}
-                            placeholder={editingConfig.has_custom_api_key ? "مفتاح خاص مُعيّن حالياً" : "المفتاح العام للمنصة"}
+                            placeholder="المفتاح العام للمنصة"
                             style={{
                               width: "100%",
                               padding: "10px",
@@ -974,11 +1108,9 @@ export function AdminDashboard() {
                           />
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                           <div>
-                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>
-                              درجة الحرارة (Temperature: 0.0 إلى 1.0):
-                            </label>
+                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>درجة الحرارة:</label>
                             <input
                               type="number"
                               step="0.05"
@@ -986,81 +1118,151 @@ export function AdminDashboard() {
                               max="1"
                               value={tempInput}
                               onChange={(e) => setTempInput(Number(e.target.value))}
-                              style={{
-                                width: "100%",
-                                padding: "10px",
-                                border: "1px solid var(--line)",
-                                borderRadius: 6,
-                              }}
+                              style={{ width: "100%", padding: "10px", border: "1px solid var(--line)", borderRadius: 6 }}
                             />
                           </div>
-
                           <div>
-                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>
-                              الحد الأقصى للتوكنز (Max Tokens):
-                            </label>
+                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>الحد الأقصى للتوكنز:</label>
                             <input
                               type="number"
                               min="100"
                               max="16000"
                               value={tokensInput}
                               onChange={(e) => setTokensInput(Number(e.target.value))}
-                              style={{
-                                width: "100%",
-                                padding: "10px",
-                                border: "1px solid var(--line)",
-                                borderRadius: 6,
-                              }}
+                              style={{ width: "100%", padding: "10px", border: "1px solid var(--line)", borderRadius: 6 }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>نموذج Fallback (اختياري):</label>
+                            <input
+                              value={fallbackModelInput}
+                              onChange={(e) => setFallbackModelInput(e.target.value)}
+                              placeholder="مثال: gemini-3.5-flash-lite"
+                              style={{ width: "100%", padding: "10px", border: "1px solid var(--line)", borderRadius: 6 }}
+                            />
+                          </div>
+                        </div>
+
+                        {testResult && (
+                          <p style={{
+                            padding: "8px 12px",
+                            borderRadius: 6,
+                            background: testResult.startsWith("✅") ? "#e7f0e5" : "#fff0ed",
+                            fontSize: 13,
+                            margin: 0,
+                          }}>
+                            {testResult}
+                          </p>
+                        )}
+
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <button className="session-start" type="submit" disabled={busy || !taskTypeInput || !modelInput}>
+                            {busy ? "جارٍ الحفظ…" : "حفظ وإضافة"}
+                          </button>
+                          <button
+                            type="button"
+                            className="session-start"
+                            style={{ margin: 0 }}
+                            onClick={() => void handleTestModel()}
+                            disabled={busy || !modelInput.trim()}
+                          >
+                            اختبار اتصال النموذج الآن
+                          </button>
+                          <button type="button" className="text-button" onClick={() => void cancelAdd()}>
+                            إلغاء
+                          </button>
+                        </div>
+                      </form>
+                    </section>
+                  )}
+
+                  {/* Edit Form */}
+                  {editingConfig && !isAdding && (
+                    <section className="upload-panel" style={{ border: "2px solid var(--green)", marginBottom: 24 }}>
+                      <h3 style={{ margin: "0 0 10px" }}>تعديل مهمة: {editingConfig.task_label}</h3>
+                      <form onSubmit={handleSaveConfig} style={{ display: "grid", gap: 12 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                          <div>
+                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>اسم النموذج (Model):</label>
+                            <input
+                              required
+                              value={modelInput}
+                              onChange={(e) => setModelInput(e.target.value)}
+                              placeholder="مثال: gemini-3.5-flash, gemini-3.5-flash-lite"
+                              style={{ width: "100%", padding: "10px", border: "1px solid var(--line)", borderRadius: 6 }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>نموذج Fallback (اختياري):</label>
+                            <input
+                              value={fallbackModelInput}
+                              onChange={(e) => setFallbackModelInput(e.target.value)}
+                              placeholder="مثال: gemini-3.5-flash-lite"
+                              style={{ width: "100%", padding: "10px", border: "1px solid var(--line)", borderRadius: 6 }}
                             />
                           </div>
                         </div>
 
                         <div>
                           <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>
-                            نموذجFallback (اختياري - 失败时自动切换):
+                            مفتاح Gemini API خاص (اتركه فارغاً للحفاظ على المفتاح الحالي):
                           </label>
                           <input
-                            value={fallbackModelInput}
-                            onChange={(e) => setFallbackModelInput(e.target.value)}
-                            placeholder="例如: gemini-3.5-flash-lite"
-                            style={{
-                              width: "100%",
-                              padding: "10px",
-                              border: "1px solid var(--line)",
-                              borderRadius: 6,
-                            }}
+                            type="password"
+                            value={apiKeyInput}
+                            onChange={(e) => setApiKeyInput(e.target.value)}
+                            placeholder={editingConfig.has_custom_api_key ? "مفتاح خاص مُعيّن حالياً" : "المفتاح العام للمنصة"}
+                            style={{ width: "100%", padding: "10px", border: "1px solid var(--line)", borderRadius: 6 }}
                           />
                         </div>
 
-                        <div>
-                          <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>وصف المهمة:</label>
-                          <input
-                            value={descInput}
-                            onChange={(e) => setDescInput(e.target.value)}
-                            style={{
-                              width: "100%",
-                              padding: "10px",
-                              border: "1px solid var(--line)",
-                              borderRadius: 6,
-                            }}
-                          />
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                          <div>
+                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>درجة الحرارة (0.0–1.0):</label>
+                            <input
+                              type="number"
+                              step="0.05"
+                              min="0"
+                              max="1"
+                              value={tempInput}
+                              onChange={(e) => setTempInput(Number(e.target.value))}
+                              style={{ width: "100%", padding: "10px", border: "1px solid var(--line)", borderRadius: 6 }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>الحد الأقصى للتوكنز:</label>
+                            <input
+                              type="number"
+                              min="100"
+                              max="16000"
+                              value={tokensInput}
+                              onChange={(e) => setTokensInput(Number(e.target.value))}
+                              style={{ width: "100%", padding: "10px", border: "1px solid var(--line)", borderRadius: 6 }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: "block", marginBottom: 4, fontWeight: 600 }}>وصف المهمة:</label>
+                            <input
+                              value={descInput}
+                              onChange={(e) => setDescInput(e.target.value)}
+                              style={{ width: "100%", padding: "10px", border: "1px solid var(--line)", borderRadius: 6 }}
+                            />
+                          </div>
                         </div>
 
                         {testResult && (
-                          <p
-                            style={{
-                              padding: "8px 12px",
-                              borderRadius: 6,
-                              background: testResult.startsWith("✅") ? "#e7f0e5" : "#fff0ed",
-                              fontSize: 13,
-                              margin: "4px 0",
-                            }}
-                          >
+                          <p style={{
+                            padding: "8px 12px",
+                            borderRadius: 6,
+                            background: testResult.startsWith("✅") ? "#e7f0e5" : "#fff0ed",
+                            fontSize: 13,
+                            margin: 0,
+                          }}>
                             {testResult}
                           </p>
                         )}
 
-                        <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+                        <div style={{ display: "flex", gap: 10 }}>
                           <button className="session-start" type="submit" disabled={busy}>
                             {busy ? "جارٍ الحفظ…" : "حفظ التعديلات"}
                           </button>
@@ -1073,11 +1275,7 @@ export function AdminDashboard() {
                           >
                             اختبار اتصال النموذج الآن
                           </button>
-                          <button
-                            type="button"
-                            className="text-button"
-                            onClick={() => setEditingConfig(null)}
-                          >
+                          <button type="button" className="text-button" onClick={() => setEditingConfig(null)}>
                             إلغاء
                           </button>
                         </div>
@@ -1085,66 +1283,80 @@ export function AdminDashboard() {
                     </section>
                   )}
 
-                  <div className="admin-ai-grid">
-                    {aiConfigs.map((cfg) => (
-                      <article className="admin-ai-card" key={cfg.task_type}>
-                        <h3>
-                          <span>{cfg.task_label}</span>
-                          <span className="token-badge">{cfg.model_name}</span>
-                        </h3>
-                        <p>{cfg.description || "تكوين مخصص لمعالجة هذه المهمة بالباك إند."}</p>
-
-                        <div className="admin-ai-meta">
-                          <div>
-                            <span>نوع المهمة:</span>
-                            <strong>{cfg.task_type}</strong>
-                          </div>
-                          <div>
-                            <span>مفتاح API:</span>
-                            <strong>{cfg.has_custom_api_key ? "مفتاح خاص 🔑" : "المفتاح العام"}</strong>
-                          </div>
-                          <div>
-                            <span>درجة الحرارة (Temp):</span>
-                            <strong>{cfg.temperature}</strong>
-                          </div>
-                          <div>
-                            <span>حد التوكنز:</span>
-                            <strong>{cfg.max_output_tokens}</strong>
-                          </div>
-                          {cfg.fallback_model && (
-                            <div>
-                              <span>Fallback模型:</span>
-                              <strong style={{ color: "var(--green)" }}>{cfg.fallback_model}</strong>
-                            </div>
-                          )}
-                        </div>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginTop: 8,
-                          }}
-                        >
-                          <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                            {cfg.updated_at ? `آخر تحديث: ${formatDate(cfg.updated_at)}` : "إعداد افتراضي"}
-                          </span>
-                          <button
-                            className="session-start"
-                            style={{ margin: 0, padding: "6px 14px" }}
-                            onClick={() => startEditConfig(cfg)}
-                          >
-                            تعديل النموذج / الـ API
-                          </button>
-                        </div>
-                      </article>
-                    ))}
+                  {/* Simplified Table View */}
+                  <div className="admin-table-container">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>نوع المهمة</th>
+                          <th>النموذج</th>
+                          <th>مفتاح API</th>
+                          <th>الحالة</th>
+                          <th>إجراءات</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aiConfigs.map((cfg) => (
+                          <tr key={cfg.task_type}>
+                            <td>
+                              <strong>{cfg.task_label}</strong>
+                              <br />
+                              <small style={{ color: "var(--muted)" }}>{cfg.task_type}</small>
+                            </td>
+                            <td>
+                              <span className="token-badge">{cfg.model_name}</span>
+                            </td>
+                            <td>
+                              <code style={{ fontSize: 12 }}>{cfg.api_key_masked}</code>
+                            </td>
+                            <td>
+                              <button
+                                style={{
+                                  fontSize: 12,
+                                  padding: "4px 10px",
+                                  borderRadius: 12,
+                                  fontWeight: 700,
+                                  border: "none",
+                                  cursor: "pointer",
+                                  background: cfg.is_active ? "#e7f0e5" : "#f0f0f0",
+                                  color: cfg.is_active ? "#2e6930" : "#777",
+                                }}
+                                onClick={() => void handleToggleConfig(cfg)}
+                              >
+                                {cfg.is_active ? "نشط 🟢" : "معطل ⚪"}
+                              </button>
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  className="text-button"
+                                  style={{ fontSize: 12, padding: "4px 8px" }}
+                                  onClick={() => void startEditConfig(cfg)}
+                                  disabled={!!isAdding}
+                                >
+                                  تعديل
+                                </button>
+                                <button
+                                  className="text-button"
+                                  style={{ fontSize: 12, padding: "4px 8px", color: "#9b3f32" }}
+                                  onClick={() => {
+                                    if (cfg.is_active && !window.confirm(`هذا المفتاح مستخدم حالياً. هل أنت متأكد من حذفه؟`)) return;
+                                    void handleDeleteConfig(cfg);
+                                  }}
+                                  disabled={busy}
+                                >
+                                  حذف
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
 
-              {/* TAB 5: AGENT SKILLS & GITHUB INGESTION */}
               {tab === "skills" && (
                 <div>
                   <p className="intro" style={{ margin: "10px 0 20px" }}>
