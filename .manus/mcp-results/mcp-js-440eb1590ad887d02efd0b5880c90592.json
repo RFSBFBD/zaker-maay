@@ -1,0 +1,4 @@
+In-app Browser JS state was preserved. Completed actions were not rolled back; refresh stale UI handles and continue only the remaining work.
+{"code":"BROWSER_ERROR","method":"browser_wait","callIndex":1,"nextAction":"inspect_before_retry"}
+Invalid arguments for browser_wait: validating root: validating /properties/timeoutMs: maximum: 90000/1 is greater than 10000.000000
+Invalid arguments for browser_wait: validating root: validating /properties/timeoutMs: maximum: 90000/1 is greater than 10000.000000

@@ -1,0 +1,260 @@
+Browser tab: tab_a0cdb9a1-7316-43bc-8300-76b16efdf79d, Title: "ذاكر معي — منصة المذاكرة الذكية والتعلم المركز", URL: "https://zaker-maay-frontend-mohamed-s-projectskks.vercel.app/subjects/f5ddd060-c6a8-4e5d-a7e3-f6d60ab82fbc".
+1645 AXWebArea ذاكر معي — منصة المذاكرة الذكية والتعلم المركز
+  1646 main
+    1647 sectionheader
+      1648 link الصفحة الرئيسية لذاكر معي
+        1649 image
+        1650 text ذاكر معي
+        1651 text مسؤول المنصة
+      1652 button تفعيل الوضع النهاري
+      1653 button خروج
+        1654 image
+        1655 text خروج
+    1656 navigation التنقل على الهواتف
+      1657 link الرئيسية
+        1658 image
+        1659 text الرئيسية
+      1660 link الإدارة
+        1661 image
+        1662 text الإدارة
+    1663 link قائمة المواد
+      1664 image
+      1665 text قائمة المواد
+    1666 text /
+    1667 heading OOP (Object-Oriented Programming)
+      1668 image
+      1669 text OOP (Object-Oriented Programming)
+    1670 tablist
+      1671 tab الشرح والمحادثة الذكية
+        1672 image
+        1673 text الشرح والمحادثة الذكية
+      1674 tab مكتبة المادة والمراجع, selected
+        1675 image
+        1676 text مكتبة المادة والمراجع
+      1677 tab اختبر فهمك
+        1678 image
+        1679 text اختبر فهمك
+      1680 tab البطاقات التعليمية
+        1681 image
+        1682 text البطاقات التعليمية
+    1683 paragraph
+      1684 text 📁 مكتبة المادة والمراجع المعتمدة
+    1685 heading مراجع OOP (Object-Oriented Programming)
+      1686 text مراجع 
+      1687 text OOP (Object-Oriented Programming)
+    1688 paragraph
+      1689 text ارفع كتبك والمحاضرات الصوتية لتكون مصدراً وحيداً يشرح منه المساعد الذكي.
+    1690 form
+      1691 heading 📤 إضافة كتاب أو ملزمة أو تسجيل صوتي
+        1692 text 📤 إضافة كتاب أو ملزمة أو تسجيل صوتي
+      1693 LabelText يدعم ملفات PDF، المستندات النصية (TXT/DOCX)، والتسجيلات الصوتية (MP3/WAV/M4A) حتى 20 ميغابايت
+        1694 text يدعم ملفات PDF، المستندات النصية (TXT/DOCX)، والتسجيلات الصوتية (MP3/WAV/M4A) حتى 20 ميغابايت
+      1695 generic
+        1696 button يدعم ملفات PDF، المستندات النصية (TXT/DOCX)، والتسجيلات الصوتية (MP3/WAV/M4A) حتى 20 ميغابايت, Value: No file chosen, required
+        1697 button ⬆️ رفع إلى مكتبة المادة
+          1698 text ⬆️ رفع إلى مكتبة المادة
+      1699 element 🎙️ تفعيل التفريغ النصي الصوتي الذكي بواسطة Google Gemini (للتسجيلات الصوتية حتى 30 دقيقة).
+        1700 checkbox 🎙️ تفعيل التفريغ النصي الصوتي الذكي بواسطة Google Gemini (للتسجيلات الصوتية حتى 30 دقيقة)., unchecked
+      1701 paragraph
+        1702 text عند تفعيل هذا الخيار يتم استخراج النص وتحويله لمقاطع دراسية يستشهد بها المساعد في إجاباته.
+    1703 generic
+      1704 heading 📚 الملفات والكتب المرفوعة (1)
+        1705 text 📚 الملفات والكتب المرفوعة (
+        1706 text 1
+        1707 text )
+      1708 generic ملفات المادة
+        1709 article
+          1710 heading 📄 oop5.pdf
+            1711 text 📄 
+            1712 text oop5.pdf
+          1713 paragraph
+            1714 text 623 كيلوبايت
+            1715 text  · 
+            1716 text ٢٨‏/١٠‏/٢٠٢٦
+            1717 text  ·
+            1718 text  
+            1719 text النص جاهز
+          1721 link ⬇️ فتح / تنزيل
+            1722 text ⬇️ فتح / تنزيل
+    1723 region محاضرات وشروحات YouTube
+      1724 paragraph
+        1725 text 🎥 روابط وفيديوهات الشرح
+      1726 heading محاضرات وشروحات YouTube
+        1727 text محاضرات وشروحات YouTube
+      1728 paragraph
+        1729 text أضف روابط فيديوهات الشرح المرتبطة بهذه المادة لتستعرضها وتراجعها في مساحة دراستك.
+      1730 form
+        1731 LabelText رابط فيديو YouTube
+          1732 text رابط فيديو YouTube
+        1733 text field رابط فيديو YouTube, required
+        1734 button ➕ إضافة الفيديو, disabled
+          1735 text ➕ إضافة الفيديو
+      1736 article
+        1737 heading 🎬 فيديو YouTube للمادة
+          1738 text 🎬 
+          1739 text فيديو YouTube للمادة
+        1740 link ↗️ فتح في YouTube
+          1741 text ↗️ فتح في YouTube
+        1742 button 🗑️ حذف
+          1743 text 🗑️ حذف
+        1745 Iframe فيديو YouTube للمادة
+  1747 alert
+          1748 generic
+          1749 AXWebArea كورس سي بلس بلس - البرمجة الكائنية | OOP (#11) - YouTube
+            1750 element كورس سي بلس بلس - البرمجة الكائنية | OOP (#11) Yehia Tech يحيى تك Watch on
+              1751 generic
+              1753 element YouTube Video Player
+                1754 generic
+              1756 generic
+                1757 element
+                1758 element
+                  1759 generic
+                  1760 button Play video
+                1761 button Hide player controls
+                1762 element كورس سي بلس بلس - البرمجة الكائنية | OOP (#11) Yehia Tech يحيى تك Watch on
+                  1763 generic
+                    1764 generic
+                    1765 element
+                  1767 element Yehia Tech يحيى تك
+                    1768 link كورس سي بلس بلس - البرمجة الكائنية | OOP (#11)
+                      1769 text كورس سي بلس بلس - البرمجة الكائنية | OOP (#11)
+                    1770 link Yehia Tech يحيى تك
+                      1771 text Yehia Tech يحيى تك
+                    1772 generic
+                      1773 button thumbnail-image
+                        1774 image thumbnail-image
+                      1775 generic
+                        1776 text Yehia Tech يحيى تك
+                        1777 text 382K subscribers
+                  1779 element Watch on
+                    1780 element
+                      1781 button Copy link
+                        1782 element
+                    1783 link Watch on YouTube
+                      1785 text Watch on
+                      1786 element
+                  1787 generic
+              1788 generic
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]:
+        - link "الصفحة الرئيسية لذاكر معي" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - img [ref=e9]
+          - generic [ref=e12]: ذاكر معي
+          - generic [ref=e13]: مسؤول المنصة
+        - generic [ref=e14]:
+          - button "تفعيل الوضع النهاري" [ref=e15] [cursor=pointer]
+          - button "خروج" [ref=e16] [cursor=pointer]:
+            - img [ref=e17]
+            - generic [ref=e20]: خروج
+      - navigation "التنقل على الهواتف" [ref=e21]:
+        - link "الرئيسية" [ref=e22] [cursor=pointer]:
+          - /url: /
+          - img [ref=e23]
+          - generic [ref=e26]: الرئيسية
+        - link "الإدارة" [ref=e27] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e28]
+          - generic [ref=e30]: الإدارة
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - link "قائمة المواد" [ref=e33] [cursor=pointer]:
+            - /url: /subjects
+            - img [ref=e34]
+            - generic [ref=e36]: قائمة المواد
+          - generic [ref=e37]: /
+          - heading "OOP (Object-Oriented Programming)" [level=2] [ref=e38]:
+            - img [ref=e39]
+            - generic [ref=e42]: OOP (Object-Oriented Programming)
+        - tablist [ref=e43]:
+          - tab "الشرح والمحادثة الذكية" [ref=e44] [cursor=pointer]:
+            - img [ref=e45]
+            - generic [ref=e47]: الشرح والمحادثة الذكية
+          - tab "مكتبة المادة والمراجع" [selected] [ref=e48] [cursor=pointer]:
+            - img [ref=e49]
+            - generic [ref=e51]: مكتبة المادة والمراجع
+          - tab "اختبر فهمك" [ref=e52] [cursor=pointer]:
+            - img [ref=e53]
+            - generic [ref=e56]: اختبر فهمك
+          - tab "البطاقات التعليمية" [ref=e57] [cursor=pointer]:
+            - img [ref=e58]
+            - generic [ref=e62]: البطاقات التعليمية
+      - generic [ref=e65]:
+        - generic [ref=e66]:
+          - paragraph [ref=e67]: 📁 مكتبة المادة والمراجع المعتمدة
+          - heading "مراجع OOP (Object-Oriented Programming)" [level=1] [ref=e68]
+          - paragraph [ref=e69]: ارفع كتبك والمحاضرات الصوتية لتكون مصدراً وحيداً يشرح منه المساعد الذكي.
+        - generic [ref=e70]:
+          - heading "📤 إضافة كتاب أو ملزمة أو تسجيل صوتي" [level=3] [ref=e71]
+          - text: يدعم ملفات PDF، المستندات النصية (TXT/DOCX)، والتسجيلات الصوتية (MP3/WAV/M4A) حتى 20 ميغابايت
+          - generic [ref=e72]:
+            - button "يدعم ملفات PDF، المستندات النصية (TXT/DOCX)، والتسجيلات الصوتية (MP3/WAV/M4A) حتى 20 ميغابايت" [ref=e73]
+            - button "⬆️ رفع إلى مكتبة المادة" [ref=e74] [cursor=pointer]
+          - generic [ref=e75]:
+            - checkbox "🎙️ تفعيل التفريغ النصي الصوتي الذكي بواسطة Google Gemini (للتسجيلات الصوتية حتى 30 دقيقة)." [ref=e76]
+            - text: 🎙️ تفعيل التفريغ النصي الصوتي الذكي بواسطة Google Gemini (للتسجيلات الصوتية حتى 30 دقيقة).
+          - paragraph [ref=e77]: عند تفعيل هذا الخيار يتم استخراج النص وتحويله لمقاطع دراسية يستشهد بها المساعد في إجاباته.
+        - generic [ref=e78]:
+          - heading "📚 الملفات والكتب المرفوعة (1)" [level=2] [ref=e80]
+          - generic "ملفات المادة" [ref=e81]:
+            - article [ref=e82]:
+              - generic [ref=e83]:
+                - heading "📄 oop5.pdf" [level=3] [ref=e84]
+                - paragraph [ref=e85]: 623 كيلوبايت · ٢٨‏/١٠‏/٢٠٢٦ · النص جاهز
+              - link "⬇️ فتح / تنزيل" [ref=e87] [cursor=pointer]:
+                - /url: https://api.cloudinary.com/v1_1/dirme3pbl/raw/download?timestamp=1793452646&public_id=study-platform%2Ff5ddd060-c6a8-4e5d-a7e3-f6d60ab82fbc%2F8429c2bb35c84e94be2c3c687aa8ff45.pdf&format=pdf&type=authenticated&attachment=1&expires_at=1793453246&signature=44b066e4014282e5c7d087cd1be88cb333f6986c&api_key=877397741892634
+        - region "محاضرات وشروحات YouTube" [ref=e88]:
+          - paragraph [ref=e89]: 🎥 روابط وفيديوهات الشرح
+          - heading "محاضرات وشروحات YouTube" [level=2] [ref=e90]
+          - paragraph [ref=e91]: أضف روابط فيديوهات الشرح المرتبطة بهذه المادة لتستعرضها وتراجعها في مساحة دراستك.
+          - generic [ref=e92]:
+            - text: رابط فيديو YouTube
+            - generic [ref=e93]:
+              - textbox "رابط فيديو YouTube" [ref=e94]:
+                - /placeholder: https://www.youtube.com/watch?v=... أو https://youtu.be/...
+              - button "➕ إضافة الفيديو" [disabled] [ref=e95]
+          - article [ref=e97]:
+            - generic [ref=e98]:
+              - heading "🎬 فيديو YouTube للمادة" [level=3] [ref=e99]
+              - generic [ref=e100]:
+                - link "↗️ فتح في YouTube" [ref=e101] [cursor=pointer]:
+                  - /url: https://www.youtube.com/watch?v=_63ZRRYhk00
+                - button "🗑️ حذف" [ref=e102] [cursor=pointer]
+            - iframe [ref=e104]:
+              - generic [active] [ref=e1]:
+                - generic "YouTube Video Player" [ref=e3]
+                - generic [ref=e5]:
+                  - generic:
+                    - generic:
+                      - button "Play video" [ref=e10] [cursor=pointer]:
+                        - generic [ref=e13]:
+                          - img
+                      - button "Hide player controls" [ref=e14] [cursor=pointer]
+                      - generic [ref=e16]:
+                        - generic [ref=e23]:
+                          - generic [ref=e24]:
+                            - link "كورس سي بلس بلس - البرمجة الكائنية | OOP (#11)" [ref=e25] [cursor=pointer]:
+                              - /url: https://www.youtube.com/watch?v=_63ZRRYhk00
+                            - link "Yehia Tech يحيى تك" [ref=e26] [cursor=pointer]:
+                              - /url: /channel/UCGP8LgaWO1lLfFQUQ2BA7rA
+                              - generic [ref=e27]: Yehia Tech يحيى تك
+                          - generic [ref=e28]:
+                            - button "thumbnail-image" [ref=e29] [cursor=pointer]:
+                              - img "thumbnail-image" [ref=e30]
+                            - generic [ref=e32]:
+                              - generic: Yehia Tech يحيى تك
+                              - generic: 382K subscribers
+                        - generic [ref=e33]:
+                          - button "Copy link" [ref=e36] [cursor=pointer]:
+                            - generic [ref=e40]:
+                              - img
+                          - link "Watch on YouTube" [ref=e47] [cursor=pointer]:
+                            - /url: https://www.youtube.com/watch?v=_63ZRRYhk00
+                            - generic [ref=e50]:
+                              - text: Watch on
+                              - img [ref=e52]:
+                                - generic [ref=e54]:
+                                  - img
+  - alert [ref=e105]

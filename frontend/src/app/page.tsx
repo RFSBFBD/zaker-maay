@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useIsHydrated } from "@/lib/use-is-hydrated";
 import { AppHeader } from "@/components/app-header";
 import { createClient } from "@/lib/supabase/client";
 import { apiRequest } from "@/lib/api";
@@ -11,7 +12,6 @@ import {
   SparklesIcon,
   ClockIcon,
   ShieldIcon,
-  FolderIcon,
   ChartBarIcon,
   TargetIcon,
   LightbulbIcon,
@@ -20,7 +20,6 @@ import {
   BotIcon,
   ChevronLeftIcon,
   CheckCircleIcon,
-  LayersIcon,
   WandIcon,
   UserIcon,
 } from "@/components/icons";
@@ -77,7 +76,7 @@ export default function Home() {
   const [sessionUser, setSessionUser] = useState<UserProfile | null>(null);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = useIsHydrated();
   const [tipIndex, setTipIndex] = useState(0);
 
   // Rotate tips automatically every 8 seconds
@@ -89,20 +88,21 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    setIsMounted(true);
     let active = true;
 
-    // Fast-path: immediately read cached profile on client to avoid layout shifts
-    try {
-      const cached = localStorage.getItem("zaker_profile");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed && parsed.id) {
-          setSessionUser(parsed);
-          setLoading(false);
+    // Fast-path: read the cache after commit to avoid blocking the initial render.
+    const cacheTimer = window.setTimeout(() => {
+      try {
+        const cached = localStorage.getItem("zaker_profile");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.id) {
+            setSessionUser(parsed);
+            setLoading(false);
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }, 0);
 
     async function initHome() {
       try {
@@ -148,6 +148,7 @@ export default function Home() {
     void initHome();
     return () => {
       active = false;
+      window.clearTimeout(cacheTimer);
     };
   }, []);
 

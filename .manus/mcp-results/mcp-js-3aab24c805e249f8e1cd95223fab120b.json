@@ -1,0 +1,8 @@
+In-app Browser JS state was preserved. Completed actions were not rolled back; refresh stale UI handles and continue only the remaining work.
+{"code":"REF_NOT_INTERACTABLE","method":"browser_download_media","callIndex":4,"nextAction":"inspect_target"}
+ERROR REF_NOT_INTERACTABLE
+{"control":{"documentRevision":"rev_ee07bd86-e151-40e7-9ead-5ce06655fa3b","error":{"code":"REF_NOT_INTERACTABLE","retryable":true},"requiresSnapshot":true,"status":"error","tabId":"tab_bd2a209f-2343-4555-962c-fafa3c1794be"},"kind":"error","schema":"manus.browser/v1","warnings":["No element matches locator: internal:role=link[name=\"⬇️ فتح / تنزيل\"s]"]}
+Check the target and its supported actions first: a label is not its control. Reacquire the intended target from fresh context. If it supports the requested action, inspect current page evidence for a disabled, occluded or offscreen target. Use a fresh screenshot when geometry is needed; do not repeat unchanged input.
+{"matches":0}
+ERROR REF_NOT_INTERACTABLE
+{"control":{"documentRevision":"rev_ee07bd86-e151-40e7-9ead-5ce06655fa3b","error":{"code":"REF_NOT_INTERACTABLE","retryable":true},"requiresSnapshot":true,"status":"error","tabId":"tab_bd2a209f-2343-4555-962c-fafa3c1794be"},"kind":"error","schema":"manus.browser/v1","warnings":["No element matches locator: internal:role=link[name=\"⬇️ فتح / تنزيل\"s]"]}

@@ -1,37 +1,53 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+
+const encouragingMessages = [
+  "جارٍ تجهيز مساحة المذاكرة الذكية…",
+  "استعد لجلسة تركيز عميقة ومثمرة…",
+  "رفيقك الذكي يستحضر مراجعك ومفاهيمك…",
+  "لحظات ونبدأ خطوة جديدة نحو التفوق…",
+];
 
 export function GlobalPageLoader() {
   const pathname = usePathname();
-  const [loading, setLoading] = useState(false);
-  const [messageIndex, setMessageIndex] = useState(0);
-
-  const encouragingMessages = [
-    "جارٍ تجهيز مساحة المذاكرة الذكية…",
-    "استعد لجلسة تركيز عميقة ومثمرة…",
-    "رفيقك الذكي يستحضر مراجعك ومفاهيمك…",
-    "لحظات ونبدأ خطوة جديدة نحو التفوق…",
-  ];
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const messageRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
-    // Show brief transition on route change
-    setLoading(true);
-    const nextIndex = Math.floor(Math.random() * encouragingMessages.length);
-    setMessageIndex(nextIndex);
+    const overlay = overlayRef.current;
+    if (!overlay) return;
 
-    const timer = setTimeout(() => {
-      setLoading(false);
+    const nextIndex = Math.floor(Math.random() * encouragingMessages.length);
+    if (messageRef.current) {
+      messageRef.current.textContent = encouragingMessages[nextIndex];
+    }
+
+    overlay.style.visibility = "visible";
+    overlay.style.opacity = "1";
+    overlay.style.pointerEvents = "auto";
+    overlay.setAttribute("aria-hidden", "false");
+
+    let concealTimer: number | undefined;
+    const hideTimer = window.setTimeout(() => {
+      overlay.style.opacity = "0";
+      overlay.style.pointerEvents = "none";
+      concealTimer = window.setTimeout(() => {
+        overlay.style.visibility = "hidden";
+        overlay.setAttribute("aria-hidden", "true");
+      }, 250);
     }, 450);
 
-    return () => clearTimeout(timer);
+    return () => {
+      window.clearTimeout(hideTimer);
+      if (concealTimer !== undefined) window.clearTimeout(concealTimer);
+    };
   }, [pathname]);
-
-  if (!loading) return null;
 
   return (
     <div
+      ref={overlayRef}
       style={{
         position: "fixed",
         inset: 0,
@@ -44,10 +60,13 @@ export function GlobalPageLoader() {
         alignItems: "center",
         justifyContent: "center",
         direction: "rtl",
-        animation: "fadeIn 0.2s ease-out",
         transition: "opacity 0.25s ease",
+        opacity: 0,
+        visibility: "hidden",
+        pointerEvents: "none",
       }}
       aria-live="assertive"
+      aria-hidden="true"
       aria-label="جاري تحميل الصفحة"
     >
       {/* Top running gradient bar */}
@@ -134,6 +153,7 @@ export function GlobalPageLoader() {
             ذاكر معي
           </h2>
           <p
+            ref={messageRef}
             style={{
               margin: 0,
               fontSize: 13.5,
@@ -141,7 +161,7 @@ export function GlobalPageLoader() {
               lineHeight: 1.6,
             }}
           >
-            {encouragingMessages[messageIndex]}
+            {encouragingMessages[0]}
           </p>
         </div>
 

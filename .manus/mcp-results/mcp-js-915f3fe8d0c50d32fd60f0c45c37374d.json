@@ -1,0 +1,7 @@
+In-app Browser JS state was preserved. Completed actions were not rolled back; refresh stale UI handles and continue only the remaining work.
+{"code":"NAVIGATION_FAILED","method":"browser_open_tab","callIndex":3,"nextAction":"inspect_before_retry"}
+ERROR NAVIGATION_FAILED
+{"control":{"documentRevision":"rev_ee07bd86-e151-40e7-9ead-5ce06655fa3b","error":{"code":"NAVIGATION_FAILED","retryable":false},"requiresSnapshot":false,"status":"error","tabId":"tab_bd2a209f-2343-4555-962c-fafa3c1794be"},"kind":"error","schema":"manus.browser/v1"}
+{"host":"https://api.cloudinary.com","path":"/v1_1/dirme3pbl/raw/download","queryKeys":["timestamp","public_id","format","type","attachment","expires_at","signature","api_key"]}
+ERROR NAVIGATION_FAILED
+{"control":{"documentRevision":"rev_ee07bd86-e151-40e7-9ead-5ce06655fa3b","error":{"code":"NAVIGATION_FAILED","retryable":false},"requiresSnapshot":false,"status":"error","tabId":"tab_bd2a209f-2343-4555-962c-fafa3c1794be"},"kind":"error","schema":"manus.browser/v1"}

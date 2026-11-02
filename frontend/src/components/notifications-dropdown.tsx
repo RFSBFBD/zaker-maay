@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
@@ -31,7 +31,7 @@ export function NotificationsDropdown() {
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  async function fetchInquiries() {
+  const fetchInquiries = useCallback(async () => {
     try {
       const {
         data: { session },
@@ -44,13 +44,16 @@ export function NotificationsDropdown() {
     } catch {
       // ignore
     }
-  }
+  }, []);
 
   useEffect(() => {
-    void fetchInquiries();
+    const initialFetch = window.setTimeout(() => void fetchInquiries(), 0);
     const interval = window.setInterval(() => void fetchInquiries(), 20_000);
-    return () => window.clearInterval(interval);
-  }, []);
+    return () => {
+      window.clearTimeout(initialFetch);
+      window.clearInterval(interval);
+    };
+  }, [fetchInquiries]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -187,12 +190,12 @@ export function NotificationsDropdown() {
           </div>
 
           <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-            {data.inquiries.length === 0 ? (
+            {answeredInquiries.length === 0 ? (
               <p style={{ margin: "20px 0", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
-                لا توجد إشعارات حتى الآن.
+                لا توجد ردود على استفساراتك حتى الآن.
               </p>
             ) : (
-              data.inquiries.slice(0, 5).map((inq) => (
+              answeredInquiries.slice(0, 5).map((inq) => (
                 <div
                   key={inq.id}
                   style={{

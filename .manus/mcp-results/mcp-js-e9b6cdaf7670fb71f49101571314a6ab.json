@@ -1,0 +1,3 @@
+In-app Browser JS state was preserved. Completed actions were not rolled back; refresh stale UI handles and continue only the remaining work.
+{"code":"UNSUPPORTED_CAPABILITY","location":"at <anonymous> (in-app-browser.js:2:28)"}
+Unknown browser method or reference "console". Valid reference topics: inspection, pagination, universal, webmcp, wheel, ax, playwright, locators, frames, events. Use iab.help(topic) or an exact native tool name.

@@ -83,7 +83,8 @@ export function SubjectQuizzes({ subjectId }: { subjectId: string }) {
   }, [getHeaders, subjectId]);
 
   useEffect(() => {
-    void loadQuizzes();
+    const timer = window.setTimeout(() => void loadQuizzes(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadQuizzes]);
 
   async function handleCreateQuiz() {

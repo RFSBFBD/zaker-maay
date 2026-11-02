@@ -127,11 +127,14 @@ def safe_call_ai(func: Callable[..., Any], *args: Any, db: Session | None = None
     """Call an AI generator passing db if supported, or without it if monkeypatched in tests."""
     try:
         sig = inspect.signature(func)
-        if "db" in sig.parameters or any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
-            return func(*args, db=db, **kwargs)
-    except Exception:
-        pass
-    try:
+    except (TypeError, ValueError):
+        # If introspection is unavailable, make a single compatible attempt;
+        # never retry a provider call after it may already have started.
         return func(*args, db=db, **kwargs)
-    except TypeError:
-        return func(*args, **kwargs)
+
+    accepts_db = "db" in sig.parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in sig.parameters.values()
+    )
+    if accepts_db:
+        kwargs = {**kwargs, "db": db}
+    return func(*args, **kwargs)

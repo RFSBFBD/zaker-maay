@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
 
@@ -14,29 +14,51 @@ const ThemeContext = createContext<ThemeContextType>({
   toggleTheme: () => {},
 });
 
+const THEME_KEY = "zaker_theme";
+const THEME_CHANGE_EVENT = "zaker-theme-change";
+
+function getThemeSnapshot(): Theme {
+  try {
+    const saved = window.localStorage.getItem(THEME_KEY);
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {
+    // Fall back to the system preference when storage is unavailable.
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function getServerThemeSnapshot(): Theme {
+  return "light";
+}
+
+function subscribeToTheme(onChange: () => void): () => void {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(THEME_CHANGE_EVENT, onChange);
+  const media = window.matchMedia("(prefers-color-scheme: dark)");
+  media.addEventListener("change", onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(THEME_CHANGE_EVENT, onChange);
+    media.removeEventListener("change", onChange);
+  };
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light");
-  const [mounted, setMounted] = useState(false);
+  const theme = useSyncExternalStore(subscribeToTheme, getThemeSnapshot, getServerThemeSnapshot);
 
   useEffect(() => {
-    const saved = localStorage.getItem("zaker_theme") as Theme | null;
-    if (saved === "light" || saved === "dark") {
-      setTheme(saved);
-      document.documentElement.dataset.theme = saved;
-    } else {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const initial = prefersDark ? "dark" : "light";
-      setTheme(initial);
-      document.documentElement.dataset.theme = initial;
-    }
-    setMounted(true);
-  }, []);
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   function toggleTheme() {
     const nextTheme: Theme = theme === "light" ? "dark" : "light";
-    setTheme(nextTheme);
-    localStorage.setItem("zaker_theme", nextTheme);
+    try {
+      window.localStorage.setItem(THEME_KEY, nextTheme);
+    } catch {
+      // The in-memory event still updates this tab if storage is unavailable.
+    }
     document.documentElement.dataset.theme = nextTheme;
+    window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
   }
 
   // Prevent flash of wrong theme while mounting

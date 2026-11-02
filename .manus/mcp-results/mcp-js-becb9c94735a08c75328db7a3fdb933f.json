@@ -1,0 +1,296 @@
+{"matches":1}
+Browser tab: tab_a0cdb9a1-7316-43bc-8300-76b16efdf79d, Title: "ذاكر معي — منصة المذاكرة الذكية والتعلم المركز", URL: "https://zaker-maay-frontend-mohamed-s-projectskks.vercel.app/admin".
+Removed:
+        1202 heading إدارة الحسابات وصلاحيات الوصول
+          1203 text إدارة الحسابات وصلاحيات الوصول
+        1204 paragraph
+          1205 text يمكنك متابعة نشاط الدخول الفعلي وتغيير رتبة المستخدمين بين (طالب) و(مسؤول).
+        1207 table
+          1208 rowgroup
+            1209 row
+              1210 columnheader المستخدم
+                1211 text المستخدم
+              1212 columnheader الدور / الصلاحية
+                1213 text الدور / الصلاحية
+              1214 columnheader حالة النشاط
+                1215 text حالة النشاط
+              1216 columnheader آخر ظهور
+                1217 text آخر ظهور
+              1218 columnheader تاريخ الانضمام
+                1219 text تاريخ الانضمام
+              1220 columnheader المواد المنشأة
+                1221 text المواد المنشأة
+              1222 columnheader الاختبارات
+                1223 text الاختبارات
+              1224 columnheader الإجراء
+                1225 text الإجراء
+          1226 row
+            1227 cell mohamed@stu.com
+              1228 strong
+                1229 text mohamed@stu.com
+            1230 cell طالب (Student)
+              1231 text طالب (Student)
+            1232 cell خلال أسبوع
+              1233 text خلال أسبوع
+            1234 cell ٢٩ أكتوبر، ٠٣:٥٤ م
+              1235 text ٢٩ أكتوبر، ٠٣:٥٤ م
+            1236 cell ٢٩ أكتوبر، ٠٣:٣٩ م
+              1237 text ٢٩ أكتوبر، ٠٣:٣٩ م
+            1238 cell 0
+              1239 text 0
+            1240 cell 0
+              1241 text 0
+            1242 cell ترقية لمسؤول
+              1243 button ترقية لمسؤول
+                1244 text ترقية لمسؤول
+          1245 row
+            1246 cell mohamedhatemmubarak@gmail.com
+              1247 strong
+                1248 text mohamedhatemmubarak@gmail.com
+            1249 cell مسؤول (Admin)
+              1250 text مسؤول (Admin)
+            1251 cell نشط الآن 🟢
+              1252 text نشط الآن 🟢
+            1253 cell ٣١ أكتوبر، ٠٣:١٥ م
+              1254 text ٣١ أكتوبر، ٠٣:١٥ م
+            1255 cell ٢٤ أكتوبر، ٠٥:١٠ م
+              1256 text ٢٤ أكتوبر، ٠٥:١٠ م
+            1257 cell 2
+              1258 text 2
+            1259 cell 0
+              1260 text 0
+            1261 cell تخفيض لطالب
+              1262 button تخفيض لطالب
+                1263 text تخفيض لطالب
+Added:
+        1264 heading إدارة وتوزيع نماذج الذكاء الاصطناعي (AI Router)
+          1265 text إدارة وتوزيع نماذج الذكاء الاصطناعي (AI Router)
+        1266 paragraph
+          1267 text لكل مهمة داخل المنصة يمكنك تعيين نموذج Gemini مختلف ومفتاح API مخصص وحدود توكنز للتحكم الكامل في الجودة والتكلفة.
+        1268 article
+          1269 heading أسئلة ومساعد المذاكرة الموثق gemini-3.5-flash
+            1270 text أسئلة ومساعد المذاكرة الموثق
+            1272 text gemini-3.5-flash
+          1273 paragraph
+            1274 text نموذج خفيف وسريع للإجابة المباشرة الموثقة بالمصادر بأقل توكنز
+          1275 generic
+            1276 text نوع المهمة:
+            1277 strong
+              1278 text chat_qa
+          1279 generic
+            1280 text مفتاح API:
+            1281 strong
+              1282 text المفتاح العام
+          1283 generic
+            1284 text درجة الحرارة (Temp):
+            1285 strong
+              1286 text 0.2
+          1287 generic
+            1288 text حد التوكنز:
+            1289 strong
+              1290 text 900
+          1291 text آخر تحديث: ٢٥ أكتوبر، ٠١:٥٢ م
+          1292 button تعديل النموذج / الـ API
+            1293 text تعديل النموذج / الـ API
+        1294 article
+          1295 heading توليد اختبارات MCQ gemini-3.5-flash
+            1296 text توليد اختبارات MCQ
+            1298 text gemini-3.5-flash
+          1299 paragraph
+            1300 text نموذج اقتصادي فائق الدقة لإنشاء اختبارات MCQ وخيارات متعددة
+          1301 generic
+            1302 text نوع المهمة:
+            1303 strong
+              1304 text quiz_generation
+          1305 generic
+            1306 text مفتاح API:
+            1307 strong
+              1308 text المفتاح العام
+          1309 generic
+            1310 text درجة الحرارة (Temp):
+            1311 strong
+              1312 text 0.2
+          1313 generic
+            1314 text حد التوكنز:
+            1315 strong
+              1316 text 1800
+          1317 text آخر تحديث: ٢٥ أكتوبر، ٠١:٥٢ م
+          1318 button تعديل النموذج / الـ API
+            1319 text تعديل النموذج / الـ API
+        1320 article
+          1321 heading بطاقات الاستذكار السريعة gemini-3.5-flash
+            1322 text بطاقات الاستذكار السريعة
+            1324 text gemini-3.5-flash
+          1325 paragraph
+            1326 text توليد بطاقات استذكار موجزة بأعلى كفاءة في استهلاك التوكنز
+          1327 generic
+            1328 text نوع المهمة:
+            1329 strong
+              1330 text flashcards
+          1331 generic
+            1332 text مفتاح API:
+            1333 strong
+              1334 text المفتاح العام
+          1335 generic
+            1336 text درجة الحرارة (Temp):
+            1337 strong
+              1338 text 0.2
+          1339 generic
+            1340 text حد التوكنز:
+            1341 strong
+              1342 text 3000
+          1343 text آخر تحديث: ٢٥ أكتوبر، ٠١:٥٢ م
+          1344 button تعديل النموذج / الـ API
+            1345 text تعديل النموذج / الـ API
+        1346 article
+          1347 heading خرائط المفاهيم وشبكة العلاقات gemini-3.5-flash
+            1348 text خرائط المفاهيم وشبكة العلاقات
+            1350 text gemini-3.5-flash
+          1351 paragraph
+            1352 text استخراج شبكات العلاقات والمفاهيم الأساسية من المنهج
+          1353 generic
+            1354 text نوع المهمة:
+            1355 strong
+              1356 text concept_map
+          1357 generic
+            1358 text مفتاح API:
+            1359 strong
+              1360 text المفتاح العام
+          1361 generic
+            1362 text درجة الحرارة (Temp):
+            1363 strong
+              1364 text 0.2
+          1365 generic
+            1366 text حد التوكنز:
+            1367 strong
+              1368 text 3000
+          1369 text آخر تحديث: ٢٥ أكتوبر، ٠١:٥٢ م
+          1370 button تعديل النموذج / الـ API
+            1371 text تعديل النموذج / الـ API
+        1372 article
+          1373 heading الملخصات والمذكرات الموسعة gemini-3.5-flash
+            1374 text الملخصات والمذكرات الموسعة
+            1376 text gemini-3.5-flash
+          1377 paragraph
+            1378 text تلخيص منظم وشامل للمذكرات الدراسية بسياق واسع
+          1379 generic
+            1380 text نوع المهمة:
+            1381 strong
+              1382 text study_notes
+          1383 generic
+            1384 text مفتاح API:
+            1385 strong
+              1386 text المفتاح العام
+          1387 generic
+            1388 text درجة الحرارة (Temp):
+            1389 strong
+              1390 text 0.2
+          1391 generic
+            1392 text حد التوكنز:
+            1393 strong
+              1394 text 7000
+          1395 text آخر تحديث: ٢٥ أكتوبر، ٠١:٥٢ م
+          1396 button تعديل النموذج / الـ API
+            1397 text تعديل النموذج / الـ API
+        1398 article
+          1399 heading تفريغ المحاضرات الصوتية الذكي gemini-3.5-flash
+            1400 text تفريغ المحاضرات الصوتية الذكي
+            1402 text gemini-3.5-flash
+          1403 paragraph
+            1404 text تفريغ حرفي للمحاضرات الصوتية باللغة الأصلية بدون اختراع
+          1405 generic
+            1406 text نوع المهمة:
+            1407 strong
+              1408 text audio_transcription
+          1409 generic
+            1410 text مفتاح API:
+            1411 strong
+              1412 text المفتاح العام
+          1413 generic
+            1414 text درجة الحرارة (Temp):
+            1415 strong
+              1416 text 0
+          1417 generic
+            1418 text حد التوكنز:
+            1419 strong
+              1420 text 10000
+          1421 text آخر تحديث: ٢٥ أكتوبر، ٠١:٥٢ م
+          1422 button تعديل النموذج / الـ API
+            1423 text تعديل النموذج / الـ API
+        1424 article
+          1425 heading توليد الصور والرسوم التوضيحية (نانو بنانا / Imagen) gemini-3.5-flash
+            1426 text توليد الصور والرسوم التوضيحية (نانو بنانا / Imagen)
+            1428 text gemini-3.5-flash
+          1429 paragraph
+            1430 text توليد الصور والرسوم التوضيحية (نانو بنانا / Imagen)
+          1431 generic
+            1432 text نوع المهمة:
+            1433 strong
+              1434 text image_generation
+          1435 generic
+            1436 text مفتاح API:
+            1437 strong
+              1438 text المفتاح العام
+          1439 generic
+            1440 text درجة الحرارة (Temp):
+            1441 strong
+              1442 text 0.3
+          1443 generic
+            1444 text حد التوكنز:
+            1445 strong
+              1446 text 2000
+          1447 text إعداد افتراضي
+          1448 button تعديل النموذج / الـ API
+            1449 text تعديل النموذج / الـ API
+        1450 article
+          1451 heading التحليل والاستيعاب الذكي للكتب والمستندات gemini-3.5-flash
+            1452 text التحليل والاستيعاب الذكي للكتب والمستندات
+            1454 text gemini-3.5-flash
+          1455 paragraph
+            1456 text التحليل والاستيعاب الذكي للكتب والمستندات
+          1457 generic
+            1458 text نوع المهمة:
+            1459 strong
+              1460 text document_ai
+          1461 generic
+            1462 text مفتاح API:
+            1463 strong
+              1464 text المفتاح العام
+          1465 generic
+            1466 text درجة الحرارة (Temp):
+            1467 strong
+              1468 text 0.3
+          1469 generic
+            1470 text حد التوكنز:
+            1471 strong
+              1472 text 2000
+          1473 text إعداد افتراضي
+          1474 button تعديل النموذج / الـ API
+            1475 text تعديل النموذج / الـ API
+        1476 article
+          1477 heading النموذج الافتراضي الاحتياطي gemini-3.5-flash
+            1478 text النموذج الافتراضي الاحتياطي
+            1480 text gemini-3.5-flash
+          1481 paragraph
+            1482 text الموديل الافتراضي الاحتياطي لتقليل التكلفة
+          1483 generic
+            1484 text نوع المهمة:
+            1485 strong
+              1486 text default
+          1487 generic
+            1488 text مفتاح API:
+            1489 strong
+              1490 text المفتاح العام
+          1491 generic
+            1492 text درجة الحرارة (Temp):
+            1493 strong
+              1494 text 0.2
+          1495 generic
+            1496 text حد التوكنز:
+            1497 strong
+              1498 text 2000
+          1499 text آخر تحديث: ٢٥ أكتوبر، ٠١:٥٢ م
+          1500 button تعديل النموذج / الـ API
+            1501 text تعديل النموذج / الـ API
+Changed:
+  983 element التنقل على الهواتف, truncated: text

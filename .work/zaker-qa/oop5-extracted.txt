@@ -1,0 +1,58 @@
+--- PDF text stream 1 (object 1) ---
+Objects and Classes 
+2
+
+--- PDF text stream 2 (object 19) ---
+What Is a Constructor?
+A constructor is a special member function that is called automatically 
+when an object is created. 
+ 
+1.
+A constructor must have the same name as the class itself.
+2.
+Constructors do not have a return type.
+
+--- PDF text stream 3 (object 21) ---
+A constructor with no parameters is known as a 
+default constructor.
+
+--- PDF text stream 4 (object 32) ---
+error
+
+--- PDF text stream 5 (object 40) ---
+Overloading
+
+--- PDF text stream 6 (object 44) ---
+Initializer List 
+length{
+0
+} , width{
+0
+}
+
+--- PDF text stream 7 (object 48) ---
+length{len} , width{w}
+w ) :
+
+--- PDF text stream 8 (object 58) ---
+Copy Constructor
+The copy constructor in C++ 
+is used to copy data from 
+one object to another. 
+
+--- PDF text stream 9 (object 67) ---
+If you don
+t define a copy 
+constructor in C++, the 
+compiler will automatically 
+create a default copy 
+constructor that copies each 
+member variable of the object 
+one by one.
+Default Copy Constructor
+
+--- PDF text stream 10 (object 79) ---
+Destructor
+A destructor is a special method that is automatically called when an object life 
+time is ended. The most common use of destructors is to deallocate memory that 
+was allocated for the object by the constructor

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useIsHydrated } from "@/lib/use-is-hydrated";
 import { createClient } from "@/lib/supabase/client";
 import { apiRequest } from "@/lib/api";
 import { useTheme } from "@/components/theme-provider";
@@ -27,22 +28,22 @@ type CurrentProfile = {
 
 export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
   const [profile, setProfile] = useState<CurrentProfile | null>(null);
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = useIsHydrated();
   const [loadingAuth, setLoadingAuth] = useState(true);
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
-    setIsMounted(true);
-
-    // Fast-path: immediately read cached profile on client to avoid layout shifts
-    try {
-      const cached = localStorage.getItem("zaker_profile");
-      if (cached) {
-        setProfile(JSON.parse(cached));
-        setLoadingAuth(false);
-      }
-    } catch {}
+    // Fast-path: read the cache after commit to avoid blocking the initial render.
+    const cacheTimer = window.setTimeout(() => {
+      try {
+        const cached = localStorage.getItem("zaker_profile");
+        if (cached) {
+          setProfile(JSON.parse(cached));
+          setLoadingAuth(false);
+        }
+      } catch {}
+    }, 0);
 
     let active = true;
     async function loadMe() {
@@ -77,6 +78,7 @@ export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
     void loadMe();
     return () => {
       active = false;
+      window.clearTimeout(cacheTimer);
     };
   }, []);
 
@@ -196,7 +198,7 @@ export function AppHeader({ currentSubjectId }: { currentSubjectId?: string }) {
             </button>
 
             {/* Auth Action */}
-            {isMounted ? (
+            {isMounted && !loadingAuth ? (
               profile ? (
                 <button
                   type="button"

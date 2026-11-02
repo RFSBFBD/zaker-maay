@@ -1,0 +1,4 @@
+In-app Browser JS state was reset; rebuild state before continuing.
+Browser cell stopped: PERMISSION_DENIED
+ERROR PERMISSION_DENIED
+{"control":{"error":{"code":"PERMISSION_DENIED","retryable":false},"requiresSnapshot":false,"status":"error"},"kind":"error","schema":"manus.browser/v1"}

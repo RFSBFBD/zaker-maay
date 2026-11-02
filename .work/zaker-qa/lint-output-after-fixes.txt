@@ -1,0 +1,43 @@
+﻿
+> ai-study-platform-frontend@0.1.0 lint
+> eslint .
+
+
+D:\ai_study\frontend\src\app\page.tsx
+  99:11  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\ai_study\frontend\src\app\page.tsx:99:11
+   97 |         const parsed = JSON.parse(cached);
+   98 |         if (parsed && parsed.id) {
+>  99 |           setSessionUser(parsed);
+      |           ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  100 |           setLoading(false);
+  101 |         }
+  102 |       }  react-hooks/set-state-in-effect
+
+D:\ai_study\frontend\src\components\app-header.tsx
+  41:9  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\ai_study\frontend\src\components\app-header.tsx:41:9
+  39 |       const cached = localStorage.getItem("zaker_profile");
+  40 |       if (cached) {
+> 41 |         setProfile(JSON.parse(cached));
+     |         ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  42 |         setLoadingAuth(false);
+  43 |       }
+  44 |     } catch {}  react-hooks/set-state-in-effect
+
+✖ 2 problems (2 errors, 0 warnings)
+

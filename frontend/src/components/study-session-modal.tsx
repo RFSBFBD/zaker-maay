@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import { ClockIcon } from "@/components/icons";
@@ -33,15 +33,15 @@ export function StudySessionModal({ currentSubjectId }: { currentSubjectId?: str
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function getHeaders() {
+  const getHeaders = useCallback(async () => {
     const {
       data: { session },
     } = await createClient().auth.getSession();
     if (!session) throw new Error("سجّل الدخول أولاً");
     return { Authorization: `Bearer ${session.access_token}` };
-  }
+  }, []);
 
-  async function loadState() {
+  const loadState = useCallback(async () => {
     try {
       const headers = await getHeaders();
       const [current, subList] = await Promise.all([
@@ -50,21 +50,22 @@ export function StudySessionModal({ currentSubjectId }: { currentSubjectId?: str
       ]);
       setActiveSession(current);
       setSubjects(subList);
-      if (!selectedSubjectId && subList.length > 0) {
-        setSelectedSubjectId(currentSubjectId || subList[0].id);
+      if (subList.length > 0) {
+        setSelectedSubjectId((current) => current || currentSubjectId || subList[0].id);
       }
     } catch {
       // ignore
     }
-  }
+  }, [currentSubjectId, getHeaders]);
 
   useEffect(() => {
-    void loadState();
-  }, [currentSubjectId]);
+    const timer = window.setTimeout(() => void loadState(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadState]);
 
   // Live timer countdown
   useEffect(() => {
-    if (!activeSession) return;
+    if (!activeSession?.id) return;
     const timer = window.setInterval(() => {
       setActiveSession((prev) => {
         if (!prev) return null;

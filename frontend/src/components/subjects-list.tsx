@@ -36,7 +36,6 @@ export function SubjectsList() {
   const [newSubjectName, setNewSubjectName] = useState("");
   const [newSubjectDescription, setNewSubjectDescription] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
-  const [isFormOpen, setIsFormOpen] = useState(true);
 
   useEffect(() => {
     let active = true;

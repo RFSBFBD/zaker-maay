@@ -60,18 +60,19 @@ export function SubjectFlashcards({ subjectId }: { subjectId: string }) {
         { headers }
       );
       setArtifacts(list);
-      if (list.length > 0 && !activeArtifact) {
-        setActiveArtifact(list[0]);
+      if (list.length > 0) {
+        setActiveArtifact((current) => current ?? list[0]);
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر تحميل البطاقات التعليمية.");
     } finally {
       setLoading(false);
     }
-  }, [getHeaders, subjectId, activeArtifact]);
+  }, [getHeaders, subjectId]);
 
   useEffect(() => {
-    void loadArtifacts();
+    const timer = window.setTimeout(() => void loadArtifacts(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadArtifacts]);
 
   async function handleCreateFlashcards() {

@@ -1,0 +1,204 @@
+{"submitButtons":1,"enabled":true}
+{"method":"browser_snapshot","warnings":["1 older browser snapshot were evicted by the bounded snapshot registry."]}
+Browser tab: tab_a0cdb9a1-7316-43bc-8300-76b16efdf79d, Title: "ذاكر معي — منصة المذاكرة الذكية والتعلم المركز", URL: "https://zaker-maay-frontend-mohamed-s-projectskks.vercel.app/subjects/f15df72b-2d72-4cdf-96ff-51e246bd5cce".
+4302 AXWebArea ذاكر معي — منصة المذاكرة الذكية والتعلم المركز
+  4303 main
+    4304 sectionheader
+      4305 link الصفحة الرئيسية لذاكر معي
+        4306 image
+        4307 text ذاكر معي
+      4308 button تحديد جلسة تركيز
+        4309 image
+        4310 text تحديد جلسة تركيز
+      4312 button الإشعارات
+        4313 image
+      4314 button تفعيل الوضع النهاري
+      4315 button خروج
+        4316 image
+        4317 text خروج
+    4318 navigation التنقل على الهواتف
+      4319 link الرئيسية
+        4320 image
+        4321 text الرئيسية
+      4322 link المواد
+        4323 image
+        4324 text المواد
+      4325 link إنجازاتي
+        4326 image
+        4327 text إنجازاتي
+    4328 link قائمة المواد
+      4329 image
+      4330 text قائمة المواد
+    4331 text /
+    4332 heading network
+      4333 image
+      4334 text network
+    4335 tablist
+      4336 tab الشرح والمحادثة الذكية
+        4337 image
+        4338 text الشرح والمحادثة الذكية
+      4339 tab مكتبة المادة والمراجع
+        4340 image
+        4341 text مكتبة المادة والمراجع
+      4342 tab اختبر فهمك, selected
+        4343 image
+        4344 text اختبر فهمك
+      4345 tab البطاقات التعليمية
+        4346 image
+        4347 text البطاقات التعليمية
+    4390 heading  اختبر فهمك واستيعابك الذكي
+      4391 image
+      4392 text  اختبر فهمك واستيعابك الذكي
+    4393 paragraph
+      4394 text اختبارات تفاعلية يولدها الذكاء الاصطناعي مستندة بدقة على محتوى كتبك ومذكراتك المرفوعة.
+    4395 button ➕ توليد اختبار ذكي جديد
+      4396 text ➕
+      4397 text توليد اختبار ذكي جديد
+    4406 heading Network Lab Configuration and Theory Quiz
+      4407 text Network Lab Configuration and Theory Quiz
+    4408 text عدد الأسئلة: 
+    4409 text 5
+    4410 text  أسئلة اختيار من متعدد
+    4411 button ← العودة للاختبارات
+      4412 text ← العودة للاختبارات
+    4502 text 🎯
+    4503 heading نتيجتك: 4 من 5 (80%)
+      4504 text نتيجتك: 
+      4505 text 4
+      4506 text  من 
+      4507 text 5
+      4508 text  (
+      4509 text 80
+      4510 text %)
+    4511 paragraph
+      4512 text أداء جيد! راجع الإجابات والتفسيرات المرجعية أدناه لتعزيز النقاط الصعبة.
+    4413 heading س1: According to the VLAN lab theory, how are broadcast domains typically bounded in a network?
+      4414 text س
+      4415 text 1
+      4416 text : 
+      4417 text According to the VLAN lab theory, how are broadcast domains typically bounded in a network?
+    4513 text إجابة صحيحة ✔
+    4418 LabelText
+      4419 radio button By Cat-5 Ethernet cables, unchecked, disabled
+      4420 text By Cat-5 Ethernet cables
+    4421 LabelText
+      4422 radio button By routers, because they do not forward broadcast frames, checked, disabled
+      4423 text By routers, because they do not forward broadcast frames
+    4424 LabelText
+      4425 radio button By end-device PC icons in Cisco Packet Tracer, unchecked, disabled
+      4426 text By end-device PC icons in Cisco Packet Tracer
+    4427 LabelText
+      4428 radio button By console cables connected to switch ports, unchecked, disabled
+      4429 text By console cables connected to switch ports
+    4514 strong
+      4515 text 💡 التفسير والشرح:
+    4516 paragraph
+      4517 text According to the text, broadcast domains are typically bounded by routers because routers do not forward broadcast frames.
+    4518 text 📖 مستند إلى المرجع: 
+    4519 text Network1_Section4.pdf
+    4520 text  (صفحة 1)
+    4430 heading س2: In CISCO Catalyst Switch basic settings configuration, what command is used to enter privileged EXEC mode from user mode?
+      4431 text س
+      4432 text 2
+      4433 text : 
+      4434 text In CISCO Catalyst Switch basic settings configuration, what command is used to enter privileged EXEC mode from user mode?
+    4521 text إجابة صحيحة ✔
+    4435 LabelText
+      4436 radio button console, unchecked, disabled
+      4437 text console
+    4438 LabelText
+      4439 radio button enable, checked, disabled
+      4440 text enable
+    4441 LabelText
+      4442 radio button ping, unchecked, disabled
+      4443 text ping
+    4444 LabelText
+      4445 radio button static, unchecked, disabled
+      4446 text static
+    4522 strong
+      4523 text 💡 التفسير والشرح:
+    4524 paragraph
+      4525 text To enter privileged EXEC mode, you enter the 'enable' command at the 'Switch>' prompt.
+    4526 text 📖 مستند إلى المرجع: 
+    4527 text Network1_Section3 .pdf
+    4528 text  (صفحة 1)
+    4447 heading س3: In the Bus Topology lab steps, what IP address is assigned to PC3?
+      4448 text س
+      4449 text 3
+      4450 text : 
+      4451 text In the Bus Topology lab steps, what IP address is assigned to PC3?
+    4529 text إجابة خاطئة ✖
+    4452 LabelText
+      4453 radio button 192.168.0.1, unchecked, disabled
+      4454 text 192.168.0.1
+    4455 LabelText
+      4456 radio button 192.168.0.2, unchecked, disabled
+      4457 text 192.168.0.2
+    4458 LabelText
+      4459 radio button 192.168.0.3, checked, disabled
+      4460 text 192.168.0.3
+    4461 LabelText
+      4462 radio button 192.168.0.4, unchecked, disabled
+      4463 text 192.168.0.4
+    4530 strong
+      4531 text 💡 التفسير والشرح:
+    4532 paragraph
+      4533 text The lab instructions state to give IP address 192.168.0.1 for PC3.
+    4534 text 📖 مستند إلى المرجع: 
+    4535 text Network1_Section2 .pdf
+    4536 text  (صفحة 1)
+    4464 heading س4: How are Layer 2 switches described regarding broadcast domains?
+      4465 text س
+      4466 text 4
+      4467 text : 
+      4468 text How are Layer 2 switches described regarding broadcast domains?
+    4537 text إجابة صحيحة ✔
+    4469 LabelText
+      4470 radio button They are single-port devices that eliminate broadcast domains, unchecked, disabled
+      4471 text They are single-port devices that eliminate broadcast domains
+    4472 LabelText
+      4473 radio button They forward broadcast frames across all router boundaries, unchecked, disabled
+      4474 text They forward broadcast frames across all router boundaries
+    4475 LabelText
+      4476 radio button They are multiport bridges that allow you to create multiple broadcast domains, checked, disabled
+      4477 text They are multiport bridges that allow you to create multiple broadcast domains
+    4478 LabelText
+      4479 radio button They replace the need for physical Cat-5 cables entirely, unchecked, disabled
+      4480 text They replace the need for physical Cat-5 cables entirely
+    4538 strong
+      4539 text 💡 التفسير والشرح:
+    4540 paragraph
+      4541 text Layer 2 switches create broadcast domains based on their configuration and are multiport bridges that allow the creation of multiple broadcast domains.
+    4542 text 📖 مستند إلى المرجع: 
+    4543 text Network1_Section4.pdf
+    4544 text  (صفحة 1)
+    4481 heading س5: What hardware cabling and device requirements are specified for Lab 4: Configuration of VLAN?
+      4482 text س
+      4483 text 5
+      4484 text : 
+      4485 text What hardware cabling and device requirements are specified for Lab 4: Configuration of VLAN?
+    4545 text إجابة صحيحة ✔
+    4486 LabelText
+      4487 radio button 6 Windows PCs, Cisco Packet Tracer, one 8 port switch (2950-24), and Cat-5 LAN cable, checked, disabled
+      4488 text 6 Windows PCs, Cisco Packet Tracer, one 8 port switch (2950-24), and Cat-5 LAN cable
+    4489 LabelText
+      4490 radio button 3 PCs, 3 Switches, and Console Cable, unchecked, disabled
+      4491 text 3 PCs, 3 Switches, and Console Cable
+    4492 LabelText
+      4493 radio button 1 Laptop, 1 Switch, and a Console Cable, unchecked, disabled
+      4494 text 1 Laptop, 1 Switch, and a Console Cable
+    4495 LabelText
+      4496 radio button 4 Windows PCs, Cisco Packet Tracer, and Cat-6 LAN cable, unchecked, disabled
+      4497 text 4 Windows PCs, Cisco Packet Tracer, and Cat-6 LAN cable
+    4546 strong
+      4547 text 💡 التفسير والشرح:
+    4548 paragraph
+      4549 text Lab 4 specifies Windows PC – 6 Nos, CISCO Packet Tracer Software, 8 port switch(2950-24) – 1 No, and Cat-5 LAN cable.
+    4550 text 📖 مستند إلى المرجع: 
+    4551 text Network1_Section4.pdf
+    4552 text  (صفحة 1)
+    4498 button إعادة حل هذا الاختبار 🔄
+      4499 text إعادة حل هذا الاختبار 🔄
+    4500 button العودة لقائمة الاختبارات
+      4501 text العودة لقائمة الاختبارات
+  4365 alert

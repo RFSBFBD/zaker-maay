@@ -1310,21 +1310,19 @@ export function AdminDashboard() {
                               <code style={{ fontSize: 12 }}>{cfg.api_key_masked}</code>
                             </td>
                             <td>
-                              <button
+                              <span
                                 style={{
                                   fontSize: 12,
                                   padding: "4px 10px",
                                   borderRadius: 12,
                                   fontWeight: 700,
-                                  border: "none",
-                                  cursor: "pointer",
                                   background: cfg.is_active ? "#e7f0e5" : "#f0f0f0",
                                   color: cfg.is_active ? "#2e6930" : "#777",
+                                  display: "inline-block",
                                 }}
-                                onClick={() => void handleToggleConfig(cfg)}
                               >
                                 {cfg.is_active ? "نشط 🟢" : "معطل ⚪"}
-                              </button>
+                              </span>
                             </td>
                             <td>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1340,12 +1338,30 @@ export function AdminDashboard() {
                                   className="text-button"
                                   style={{ fontSize: 12, padding: "4px 8px", color: "#9b3f32" }}
                                   onClick={() => {
-                                    if (cfg.is_active && !window.confirm(`هذا المفتاح مستخدم حالياً. هل أنت متأكد من حذفه؟`)) return;
+                                    const confirmMsg = cfg.is_active
+                                        ? `هذا المفتاح مستخدم حاليًا في مهمة «${cfg.task_label}» — هل تريد حذفه؟`
+                                        : `هل تريد حذف إعداد نموذج مهمة «${cfg.task_label}»؟`;
+                                    if (!window.confirm(confirmMsg)) return;
                                     void handleDeleteConfig(cfg);
                                   }}
                                   disabled={busy}
                                 >
                                   حذف
+                                </button>
+                                <button
+                                  className="text-button"
+                                  style={{
+                                    fontSize: 12,
+                                    padding: "4px 8px",
+                                    borderRadius: 4,
+                                    fontWeight: 700,
+                                    border: "1px solid var(--line)",
+                                    cursor: "pointer",
+                                    background: "#fff",
+                                  }}
+                                  onClick={() => void handleToggleConfig(cfg)}
+                                >
+                                  {cfg.is_active ? "تعطيل" : "تفعيل"}
                                 </button>
                               </div>
                             </td>

@@ -40,7 +40,7 @@ type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  timestamp: Date;
+  timestamp?: Date;
   media?: ChatMedia;
   no_resources?: boolean;
   out_of_scope?: boolean;
@@ -88,18 +88,17 @@ type SubjectInfo = {
   description: string | null;
 };
 
-function ClientMessageTime({ date }: { date: Date | string }) {
-  const [formatted, setFormatted] = useState<string>("");
-  useEffect(() => {
-    try {
-      const d = typeof date === "string" ? new Date(date) : date;
-      setFormatted(d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }));
-    } catch {
-      setFormatted("");
-    }
-  }, [date]);
+const CHAT_TIME_FORMATTER = new Intl.DateTimeFormat("ar-EG", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Africa/Cairo",
+});
 
-  return <span suppressHydrationWarning>{formatted || "·"}</span>;
+function ClientMessageTime({ date }: { date?: Date | string }) {
+  if (!date) return <span>·</span>;
+  const value = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(value.getTime())) return <span>·</span>;
+  return <span>{CHAT_TIME_FORMATTER.format(value)}</span>;
 }
 
 const WELCOME_MESSAGE: ChatMessage = {
@@ -107,7 +106,6 @@ const WELCOME_MESSAGE: ChatMessage = {
   role: "assistant",
   content:
     "مرحبًا بك! أنا رفيقك ومساعدك الذكي في «ذاكر معي».\nأشرح لك كافة مفاهيم المادة من مراجعك وكتبك المرفوعة فقط، ويمكنك أيضاً طلب رسم توضيحي ذكي لأي مفهوم بصرياً!",
-  timestamp: new Date(),
 };
 
 const QUICK_PROMPTS = [
@@ -115,6 +113,13 @@ const QUICK_PROMPTS = [
   "اشرح لي فكرة المادة بأسلوب مبسط خطوة بخطوة",
   "اختبرني بسؤال سريع لتأكيد فهمي للدرس",
 ];
+
+let localMessageSequence = 0;
+
+function createLocalMessageId(prefix: string): string {
+  localMessageSequence += 1;
+  return `${prefix}-${localMessageSequence}`;
+}
 
 export function SubjectPageContent({ subjectId }: { subjectId: string }) {
   const [activeTab, setActiveTab] = useState<"chat" | "library" | "quizzes" | "flashcards">("chat");
@@ -294,7 +299,8 @@ function FullScreenChat({
   }, [getHeaders, subjectId]);
 
   useEffect(() => {
-    void loadThreads();
+    const timer = window.setTimeout(() => void loadThreads(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadThreads]);
 
   useEffect(() => {
@@ -373,7 +379,7 @@ function FullScreenChat({
     if (!text || sending) return;
 
     const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
+      id: createLocalMessageId("user"),
       role: "user",
       content: text,
       timestamp: new Date(),
@@ -405,7 +411,7 @@ function FullScreenChat({
       }
 
       const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
+        id: createLocalMessageId("assistant"),
         role: "assistant",
         content: response.answer,
         timestamp: new Date(),
@@ -435,7 +441,7 @@ function FullScreenChat({
     setError(null);
 
     const userNote: ChatMessage = {
-      id: `req-${Date.now()}`,
+      id: createLocalMessageId("req"),
       role: "user",
       content: `طلب رسم توضيحي بالذكاء الاصطناعي لـ: «${prompt.slice(0, 80)}»`,
       timestamp: new Date(),
@@ -456,7 +462,7 @@ function FullScreenChat({
       );
 
       const assistantImageMsg: ChatMessage = {
-        id: `img-${Date.now()}`,
+        id: createLocalMessageId("img"),
         role: "assistant",
         content: `تم إنشاء المخطط والرسم التوضيحي التعليمي (${result.title}):`,
         timestamp: new Date(),
