@@ -248,7 +248,7 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
       <form className="upload-panel" onSubmit={upload} style={{ marginBottom: 32 }}>
         <h3 style={{ fontSize: 18, marginBottom: 8 }}>📤 إضافة كتاب أو ملزمة أو تسجيل صوتي</h3>
         <label htmlFor="resource-file" style={{ fontSize: 14, color: "var(--muted)" }}>
-          يدعم ملفات PDF، المستندات النصية (TXT/DOCX)، والتسجيلات الصوتية (MP3/WAV/M4A) حتى 20 ميغابايت
+          ارفع كتبك ومحاضراتك الصوتية لإضافتها إلى مكتبة المادة
         </label>
         <div className="upload-row" style={{ marginTop: 12 }}>
           <input
@@ -270,7 +270,7 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
             onChange={(event) => setTranscribeAudio(event.target.checked)}
             disabled={uploading}
           />
-          🎙️ تفعيل التفريغ النصي الصوتي الذكي بواسطة Google Gemini (للتسجيلات الصوتية حتى 30 دقيقة).
+          🎙️ تفعيل التفريغ النصي الصوتي الذكي بواسطة Google Gemini.
         </label>
         <p className="privacy-note">
           عند تفعيل هذا الخيار يتم استخراج النص وتحويله لمقاطع دراسية يستشهد بها المساعد في إجاباته.

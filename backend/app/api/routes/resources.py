@@ -177,10 +177,9 @@ def upload_resource(
     transcript = None
     audio_duration_seconds = None
 
-    # Automated AI Processing Pipeline:
-    # 1. If audio file: automatically transcribe via Gemini to extract study text
+    # Audio transcription pipeline: only transcribe when explicitly requested
     is_audio = extension in TRANSCRIBABLE_EXTENSIONS
-    if is_audio or transcribe_audio:
+    if is_audio and transcribe_audio:
         try:
             audio_duration_seconds = inspect_audio(content, extension)
         except InvalidAudio as exc:
@@ -190,7 +189,11 @@ def upload_resource(
         except gemini.GeminiNotConfigured:
             logger.warning("Gemini transcription not configured, storing audio as is.")
         except (gemini.GeminiRateLimited, gemini.GeminiRequestFailed) as ai_err:
-            logger.warning("Gemini transcription failed or rate-limited: %s", ai_err)
+            logger.error("Gemini transcription failed for %s: %s", file_name, ai_err)
+            raise HTTPException(status_code=502, detail="تعذر معالجة الملف الصوتي — بقي الملف على جهازك.") from None
+        except Exception as exc:
+            logger.exception("Unexpected transcription error for %s: %s", file_name, exc)
+            raise HTTPException(status_code=502, detail="تعذر معالجة الملف الصوتي. حاول مجددًا.") from None
 
         if transcript and transcript.transcript:
             processed = process_document(
@@ -243,7 +246,7 @@ def upload_resource(
     except cloudinary_storage.StorageNotConfigured:
         raise HTTPException(status_code=503, detail="File storage is not configured.") from None
     except cloudinary_storage.StorageOperationFailed:
-        raise HTTPException(status_code=502, detail="File storage could not complete the upload.") from None
+        raise HTTPException(status_code=502, detail="تعذر تخزين الملف. حاول مجددًا.") from None
 
     resource = Resource(
         subject_id=subject_id,

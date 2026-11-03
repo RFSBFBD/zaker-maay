@@ -53,6 +53,10 @@ type ChatResponse = {
   inquiry_id?: string | null;
   thread_id?: string;
   suggested_replies?: string[];
+  media_type?: "image" | "svg" | null;
+  media_url?: string | null;
+  media_svg?: string | null;
+  media_title?: string | null;
 };
 
 type ChatThreadItem = {
@@ -417,6 +421,14 @@ function FullScreenChat({
         timestamp: new Date(),
         no_resources: response.no_resources,
         out_of_scope: response.out_of_scope,
+        media: response.media_type
+          ? {
+              type: response.media_type,
+              url: response.media_url || undefined,
+              svg: response.media_svg || undefined,
+              title: response.media_title || undefined,
+            }
+          : undefined,
       };
       setMessages((prev) => [...prev, assistantMessage]);
       setSuggestedReplies(response.suggested_replies || []);
@@ -903,23 +915,6 @@ function FullScreenChat({
               lineHeight: 1.5,
             }}
           />
-
-          {/* Educational Diagram / Image Button */}
-          <button
-            type="button"
-            onClick={() => void handleGenerateIllustration()}
-            disabled={generatingImage || sending}
-            title="توليد رسم توضيحي أو خريطة بصرية للمفهوم"
-            className="btn btn-secondary"
-            style={{
-              height: 46,
-              color: "var(--orange)",
-              borderColor: "rgba(217, 119, 54, 0.3)",
-            }}
-          >
-            <WandIcon size={16} />
-            <span>رسم توضيحي</span>
-          </button>
 
           {/* Send Button */}
           <button

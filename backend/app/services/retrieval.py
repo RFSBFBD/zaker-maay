@@ -96,11 +96,7 @@ def retrieve_for_subject(db: Session, *, subject_id: UUID, query: str, limit: in
 
 
 def sample_for_subject(db: Session, *, subject_id: UUID, limit: int = 4) -> list[RetrievedPassage]:
-    """Sample resource chunks only — used for quiz/flashcard generation.
-    YouTube transcript chunks are intentionally excluded because quiz/study
-    artifact generation stores source_resource_id pointing to Resource rows,
-    and mixing in YouTubeLink IDs would violate that invariant.
-    """
+    """Sample resource chunks for quiz/flashcard generation."""
     rows = db.execute(
         select(ResourceChunk, Resource)
         .join(Resource, Resource.id == ResourceChunk.resource_id)
@@ -124,6 +120,26 @@ def sample_for_subject(db: Session, *, subject_id: UUID, limit: int = 4) -> list
             selected_ids.add(chunk.id)
             if len(selected) >= limit:
                 break
+    if len(selected) < limit:
+        transcript_rows = db.execute(
+            select(Resource)
+            .where(
+                Resource.subject_id == subject_id,
+                Resource.transcript_text.isnot(None),
+                Resource.processing_status.in_(("ready", "truncated")),
+            )
+        ).scalars().all()
+        for resource in transcript_rows:
+            if resource.id not in seen_resources:
+                selected.append(
+                    (
+                        type("Chunk", (), {"content": resource.transcript_text, "chunk_index": 0})(),
+                        resource,
+                    )
+                )
+                seen_resources.add(resource.id)
+                if len(selected) >= limit:
+                    break
     return [
         RetrievedPassage(
             resource_id=resource.id,

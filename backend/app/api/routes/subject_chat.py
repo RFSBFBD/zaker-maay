@@ -49,6 +49,10 @@ class ChatResponse(BaseModel):
     out_of_scope: bool = False
     inquiry_id: UUID | None = None
     suggested_replies: list[str] | None = None
+    media_type: str | None = None
+    media_url: str | None = None
+    media_svg: str | None = None
+    media_title: str | None = None
 
 
 class ThreadResponse(BaseModel):
@@ -427,47 +431,60 @@ def chat(
                 prompt=payload.message,
                 db=db,
             )
-            # Return the generated image in the chat response
-            # The frontend expects answer to contain the text, and media for images
             media_type = result.get("type", "svg")
-            media_data = result.get("svg") or result.get("image_url")
             title = result.get("title", payload.message)
-
-            # Mark this as an image response by including media in the answer flow
-            # We'll set a flag and include the image data
-            raw_answer = f"[IMAGE_GENERATED:{media_type}:{title}]"
-            # Save as a normal answer but the frontend will handle the media
+            description = result.get("description", title)
+            image_url = result.get("image_url")
+            svg_content = result.get("svg")
             out_of_scope = False
             inquiry_id = None
 
-            # Save assistant message with image info
+            # Resolve or create thread for persistence
+            thread: ChatThread | None = None
+            if payload.thread_id:
+                thread = db.get(ChatThread, payload.thread_id)
+                if not thread or thread.student_id != profile.id or thread.subject_id != subject_id:
+                    thread = None
+            if not thread:
+                thread = ChatThread(
+                    id=uuid4(),
+                    subject_id=subject_id,
+                    student_id=profile.id,
+                    title="محادثة جديدة",
+                )
+                db.add(thread)
+            db.flush()
+
             asst_msg = DBChatMessage(
                 id=uuid4(),
-                thread_id=thread.id if thread else uuid4(),
+                thread_id=thread.id,
                 role="assistant",
-                content=raw_answer,
+                content=title,
+                media_type=media_type,
+                media_url=image_url,
+                media_svg=svg_content,
+                media_title=title,
                 no_resources=False,
                 out_of_scope=out_of_scope,
             )
             db.add(asst_msg)
-            db.commit()
-
-            # Also need to update thread title if new
-            if thread and thread.title == "محادثة جديدة":
+            if thread.title == "محادثة جديدة":
                 clean_title = payload.message.strip().replace("\n", " ")
                 if len(clean_title) > 40:
                     clean_title = clean_title[:38] + "…"
                 thread.title = clean_title
-                db.commit()
+            db.commit()
 
             return ChatResponse(
-                answer=raw_answer,
+                answer=title,
                 thread_id=thread.id if thread else uuid4(),
                 message_id=asst_msg.id,
                 no_resources=False,
                 out_of_scope=out_of_scope,
-                # Include media info via a special mechanism
-                # The frontend checks for [IMAGE_GENERATED:] prefix
+                media_type=media_type,
+                media_url=image_url,
+                media_svg=svg_content,
+                media_title=title,
             )
         except Exception as e:
             logger.warning("Image generation from chat failed: %s", e)
@@ -583,7 +600,7 @@ def chat(
 
     # 5.1 Generate dynamic follow-up suggestions (Bug #4)
     suggested_replies = None
-    if "[IMAGE_GENERATED:" not in raw_answer:
+    if not any(kw in payload.message.strip().lower() for kw in _IMAGE_REQUEST_KEYWORDS):
         try:
             suggested_replies = gemini_service.generate_follow_up_suggestions(
                 last_answer=raw_answer,
