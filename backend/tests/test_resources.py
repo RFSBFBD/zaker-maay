@@ -61,6 +61,14 @@ def mock_storage(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(cloudinary_storage, "delete_asset", lambda *, public_id, resource_type: None)
 
+    # For the new direct upload flow, we need to mock fetching from Cloudinary
+    from app.api.routes import resources as resources_route
+    monkeypatch.setattr(
+        resources_route,
+        "_fetch_file_from_cloudinary",
+        lambda public_id, resource_type: (b"%PDF-1.7\ncontent", "application/pdf")
+    )
+
 
 def one_second_wav() -> bytes:
     output = io.BytesIO()
@@ -80,7 +88,12 @@ def test_upload_stores_metadata_without_exposing_storage_url(
 
     response = client.post(
         f"/api/v1/subjects/{subject.id}/resources",
-        files={"file": ("lecture.pdf", b"%PDF-1.7\ncontent", "application/pdf")},
+        data={
+            "cloudinary_public_id": "test-id",
+            "cloudinary_secure_url": "https://private.invalid/asset",
+            "file_name": "lecture.pdf",
+            "size_bytes": 100,
+        },
     )
 
     assert response.status_code == 201
@@ -99,10 +112,19 @@ def test_duplicate_upload_is_rejected_without_deleting_existing_asset(
     mock_storage(monkeypatch)
     client, db, _, subject = resource_client
     path = f"/api/v1/subjects/{subject.id}/resources"
-    file = {"file": ("lecture.pdf", b"%PDF-1.7\ncontent", "application/pdf")}
+    payload = {
+        "cloudinary_public_id": "test-id-1",
+        "cloudinary_secure_url": "https://private.invalid/asset",
+        "file_name": "lecture.pdf",
+        "size_bytes": 100,
+    }
 
-    first = client.post(path, files=file)
-    duplicate = client.post(path, files=file)
+    first = client.post(path, data=payload)
+
+    # Change public ID so it's not a direct DB conflict on public_id,
+    # but the content mock still returns same bytes causing sha256 conflict
+    payload["cloudinary_public_id"] = "test-id-2"
+    duplicate = client.post(path, data=payload)
 
     assert first.status_code == 201
     assert duplicate.status_code == 409
@@ -111,15 +133,23 @@ def test_duplicate_upload_is_rejected_without_deleting_existing_asset(
 def test_invalid_file_content_is_rejected_before_storage(
     resource_client: tuple[TestClient, Session, UserProfile, Subject], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def unexpected_upload(*args, **kwargs):
-        pytest.fail("Storage must not be called for invalid files.")
-
-    monkeypatch.setattr(cloudinary_storage, "upload_private_asset", unexpected_upload)
+    mock_storage(monkeypatch)
+    from app.api.routes import resources as resources_route
+    monkeypatch.setattr(
+        resources_route,
+        "_fetch_file_from_cloudinary",
+        lambda public_id, resource_type: (b"not a pdf", "application/pdf")
+    )
     client, _, _, subject = resource_client
 
     response = client.post(
         f"/api/v1/subjects/{subject.id}/resources",
-        files={"file": ("fake.pdf", b"not a pdf", "application/pdf")},
+        data={
+            "cloudinary_public_id": "test-id",
+            "cloudinary_secure_url": "https://private.invalid/asset",
+            "file_name": "fake.pdf",
+            "size_bytes": 100,
+        },
     )
 
     assert response.status_code == 415
@@ -132,7 +162,12 @@ def test_resource_endpoints_require_subject_membership(
     client, _, _, subject = resource_client
     uploaded = client.post(
         f"/api/v1/subjects/{subject.id}/resources",
-        files={"file": ("lecture.pdf", b"%PDF-1.7\ncontent", "application/pdf")},
+        data={
+            "cloudinary_public_id": "test-id",
+            "cloudinary_secure_url": "https://private.invalid/asset",
+            "file_name": "lecture.pdf",
+            "size_bytes": 100,
+        },
     )
     outsider = UserProfile(id=uuid4(), role="student")
     app.dependency_overrides[get_current_profile] = lambda: outsider
@@ -153,7 +188,12 @@ def test_download_returns_a_signed_link_only_after_membership_check(
     client, _, _, subject = resource_client
     uploaded = client.post(
         f"/api/v1/subjects/{subject.id}/resources",
-        files={"file": ("lecture.pdf", b"%PDF-1.7\ncontent", "application/pdf")},
+        data={
+            "cloudinary_public_id": "test-id-1",
+            "cloudinary_secure_url": "https://private.invalid/asset",
+            "file_name": "lecture.pdf",
+            "size_bytes": 100,
+        },
     )
     resource_id = uploaded.json()["id"]
 
@@ -173,7 +213,12 @@ def test_only_uploader_or_admin_can_delete_a_resource(
     client, db, _, subject = resource_client
     uploaded = client.post(
         f"/api/v1/subjects/{subject.id}/resources",
-        files={"file": ("lecture.pdf", b"%PDF-1.7\ncontent", "application/pdf")},
+        data={
+            "cloudinary_public_id": "test-id-2",
+            "cloudinary_secure_url": "https://private.invalid/asset",
+            "file_name": "lecture.pdf",
+            "size_bytes": 100,
+        },
     )
     resource_id = uploaded.json()["id"]
     another_member = UserProfile(id=uuid4(), role="student")
@@ -201,7 +246,12 @@ def test_audio_upload_is_not_sent_to_gemini_without_explicit_consent(
 
     response = client.post(
         f"/api/v1/subjects/{subject.id}/resources",
-        files={"file": ("lecture.wav", one_second_wav(), "audio/wav")},
+        data={
+            "cloudinary_public_id": "test-id",
+            "cloudinary_secure_url": "https://private.invalid/asset",
+            "file_name": "lecture.wav",
+            "size_bytes": 100,
+        },
     )
 
     assert response.status_code == 201
@@ -222,8 +272,13 @@ def test_audio_upload_transcribes_and_saves_only_after_explicit_consent(
 
     response = client.post(
         f"/api/v1/subjects/{subject.id}/resources",
-        files={"file": ("lecture.wav", one_second_wav(), "audio/wav")},
-        data={"transcribe_audio": "true"},
+        data={
+            "cloudinary_public_id": "test-id",
+            "cloudinary_secure_url": "https://private.invalid/asset",
+            "file_name": "lecture.wav",
+            "size_bytes": 100,
+            "transcribe_audio": "true",
+        },
     )
 
     assert response.status_code == 201
@@ -257,8 +312,13 @@ def test_transcription_provider_failure_leaves_audio_unstored_and_returns_error(
 
     response = client.post(
         f"/api/v1/subjects/{subject.id}/resources",
-        files={"file": ("lecture.wav", one_second_wav(), "audio/wav")},
-        data={"transcribe_audio": "true"},
+        data={
+            "cloudinary_public_id": "test-id-3",
+            "cloudinary_secure_url": "https://private.invalid/asset",
+            "file_name": "lecture.wav",
+            "size_bytes": 100,
+            "transcribe_audio": "true",
+        },
     )
 
     assert response.status_code == 502

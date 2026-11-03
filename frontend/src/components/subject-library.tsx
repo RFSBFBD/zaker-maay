@@ -143,11 +143,40 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
 
     try {
       const headers = await getHeaders();
-      const query = transcribeAudio ? "?transcribe_audio=true" : "";
-      const created = await apiRequest<Resource>(`/api/v1/subjects/${subjectId}/resources${query}`, {
+      // 1. Get signed upload params
+      const params = await apiRequest<Record<string, string>>(
+        `/api/v1/subjects/${subjectId}/resources/upload-params?file_name=${encodeURIComponent(file.name)}&resource_type=${file.type.startsWith("audio/") ? "video" : "raw"}`,
+        { headers }
+      );
+
+      // 2. Upload directly to Cloudinary
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("api_key", params.api_key);
+      formData.append("timestamp", params.timestamp);
+      formData.append("signature", params.signature);
+      formData.append("public_id", params.public_id);
+      formData.append("resource_type", params.resource_type);
+
+      const cloudinaryResp = await fetch(
+        `https://api.cloudinary.com/v1_1/${params.cloud_name}/${params.resource_type}/upload`,
+        { method: "POST", body: formData }
+      );
+      if (!cloudinaryResp.ok) throw new Error("تعذر الرفع للسحابة.");
+      const cloudinaryData = await cloudinaryResp.json();
+
+      // 3. Post metadata to our backend
+      const metaForm = new FormData();
+      metaForm.append("cloudinary_public_id", cloudinaryData.public_id);
+      metaForm.append("cloudinary_secure_url", cloudinaryData.secure_url);
+      metaForm.append("file_name", file.name);
+      metaForm.append("size_bytes", file.size.toString());
+      if (transcribeAudio) metaForm.append("transcribe_audio", "true");
+
+      const created = await apiRequest<Resource>(`/api/v1/subjects/${subjectId}/resources`, {
         method: "POST",
         headers,
-        body: formData,
+        body: metaForm,
       });
       setResources((current) => [created, ...current]);
       form.reset();

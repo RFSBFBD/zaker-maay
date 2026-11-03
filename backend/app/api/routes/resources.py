@@ -1,14 +1,18 @@
+from __future__ import annotations
+
 import hashlib
 import io
 import logging
 import re
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+import requests
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict, computed_field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -157,17 +161,94 @@ def list_resources(
     )
 
 
+@router.get("/upload-params", response_model=dict)
+def get_cloudinary_upload_params(
+    subject_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+    file_name: str = Query(...),
+    resource_type: str = Query(...),
+) -> dict:
+    """Return signed Cloudinary upload parameters so the browser can upload directly."""
+    _accessible_subject(db, subject_id, profile)
+    from cloudinary import utils as cu
+
+    settings = get_settings()
+    if not all((settings.cloudinary_cloud_name, settings.cloudinary_api_key, settings.cloudinary_api_secret)):
+        raise HTTPException(status_code=503, detail="تخزين السحابة غير مهيأ.")
+
+    public_id = f"study-platform/{subject_id}/{uuid4().hex}{PurePosixPath(file_name).suffix}"
+    params = {
+        "timestamp": int(datetime.utcnow().timestamp()),
+        "public_id": public_id,
+        "resource_type": resource_type,
+    }
+    signature = cu.api_sign_request(params, settings.cloudinary_api_secret)
+    return {
+        "cloud_name": settings.cloudinary_cloud_name,
+        "api_key": settings.cloudinary_api_key,
+        "timestamp": str(params["timestamp"]),
+        "public_id": public_id,
+        "resource_type": resource_type,
+        "signature": signature,
+    }
+
+
+def _fetch_file_from_cloudinary(public_id: str, resource_type: str) -> tuple[bytes, str]:
+    """Download a file from Cloudinary by its public_id for local processing.
+
+    Returns (content_bytes, mime_type_from_header).
+    """
+    from cloudinary import utils as cu
+
+    settings = get_settings()
+    url = cu.cloudinary_url(public_id, resource_type=resource_type, format="")[0]
+    resp = requests.get(url, timeout=120, stream=True)
+    resp.raise_for_status()
+    content = b""
+    mime_type = "application/octet-stream"
+    with tempfile.TemporaryFile() as tmp:
+        for chunk in resp.iter_content(chunk_size=8192):
+            if chunk:
+                tmp.write(chunk)
+                content += chunk
+                if len(content) > MAX_FILE_BYTES + 1:
+                    raise HTTPException(status_code=413, detail="File exceeds the 20 MiB limit.")
+        tmp.seek(0)
+        headers = dict(resp.headers)
+        mime_type = headers.get("content-type", "application/octet-stream").split(";")[0]
+    return content, mime_type
+
+
 @router.post("", response_model=ResourceResponse, status_code=status.HTTP_201_CREATED)
 def upload_resource(
     subject_id: UUID,
     profile: Annotated[UserProfile, Depends(get_current_profile)],
     db: Annotated[Session, Depends(get_db)],
-    file: Annotated[UploadFile, File()],
+    cloudinary_public_id: Annotated[str, Form(...)],
+    cloudinary_secure_url: Annotated[str, Form(...)],
+    file_name: Annotated[str, Form(...)],
+    size_bytes: Annotated[int, Form(...)],
     transcribe_audio: Annotated[bool, Form()] = False,
 ) -> Resource:
+    """Create a Resource record from an already-uploaded Cloudinary file.
+
+    The browser uploads the file directly to Cloudinary first, then posts only
+    metadata here — no file bytes traverse this endpoint.
+    """
     _accessible_subject(db, subject_id, profile)
-    file_name, extension = _safe_filename(file.filename)
-    content = file.file.read(MAX_FILE_BYTES + 1)
+    _, extension = _safe_filename(file_name)
+    resource_type = ALLOWED_TYPES[extension][1]
+
+    # Re-download from Cloudinary so we can compute sha256 and process content
+    try:
+        content, mime_type = _fetch_file_from_cloudinary(cloudinary_public_id, resource_type)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to fetch uploaded file from Cloudinary: %s", exc)
+        raise HTTPException(status_code=502, detail="تعذر تنزيل الملف المرفوع للمعالجة.") from None
+
     if len(content) > MAX_FILE_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds the 20 MiB limit.")
     if not content:
@@ -237,17 +318,6 @@ def upload_resource(
     if duplicate is not None:
         raise HTTPException(status_code=409, detail="This file already exists in the subject library.")
 
-    resource_type = ALLOWED_TYPES[extension][1]
-    public_id = f"study-platform/{subject_id}/{uuid4().hex}{extension if resource_type == 'raw' else ''}"
-    try:
-        uploaded = cloudinary_storage.upload_private_asset(
-            content, public_id=public_id, resource_type=resource_type
-        )
-    except cloudinary_storage.StorageNotConfigured:
-        raise HTTPException(status_code=503, detail="File storage is not configured.") from None
-    except cloudinary_storage.StorageOperationFailed:
-        raise HTTPException(status_code=502, detail="تعذر تخزين الملف. حاول مجددًا.") from None
-
     resource = Resource(
         subject_id=subject_id,
         uploaded_by=profile.id,
@@ -255,8 +325,8 @@ def upload_resource(
         mime_type=mime_type,
         size_bytes=len(content),
         sha256=sha256,
-        cloudinary_public_id=uploaded["public_id"],
-        secure_url=uploaded.get("secure_url", ""),
+        cloudinary_public_id=cloudinary_public_id,
+        secure_url=cloudinary_secure_url,
         transcript_text=transcript.transcript if transcript else None,
         transcript_language=transcript.language if transcript else None,
         transcription_model=get_settings().gemini_model if transcript else None,
@@ -274,11 +344,11 @@ def upload_resource(
         db.refresh(resource)
     except IntegrityError:
         db.rollback()
-        _remove_orphan(public_id, resource_type)
+        _remove_orphan(cloudinary_public_id, resource_type)
         raise HTTPException(status_code=409, detail="This file already exists in the subject library.") from None
     except SQLAlchemyError:
         db.rollback()
-        _remove_orphan(public_id, resource_type)
+        _remove_orphan(cloudinary_public_id, resource_type)
         raise HTTPException(status_code=503, detail="File metadata could not be saved.") from None
     return resource
 
