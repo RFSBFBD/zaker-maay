@@ -63,10 +63,15 @@ def mock_storage(monkeypatch: pytest.MonkeyPatch) -> None:
 
     # For the new direct upload flow, we need to mock fetching from Cloudinary
     from app.api.routes import resources as resources_route
+    def _mock_fetch(public_id: str, resource_type: str, secure_url: str | None = None):
+        if resource_type == "video" or "wav" in public_id:
+            return (one_second_wav(), "audio/wav")
+        return (b"%PDF-1.7\ncontent", "application/pdf")
+
     monkeypatch.setattr(
         resources_route,
         "_fetch_file_from_cloudinary",
-        lambda public_id, resource_type: (b"%PDF-1.7\ncontent", "application/pdf")
+        _mock_fetch
     )
 
 
@@ -138,7 +143,7 @@ def test_invalid_file_content_is_rejected_before_storage(
     monkeypatch.setattr(
         resources_route,
         "_fetch_file_from_cloudinary",
-        lambda public_id, resource_type: (b"not a pdf", "application/pdf")
+        lambda public_id, resource_type, *args, **kwargs: (b"not a pdf", "application/pdf")
     )
     client, _, _, subject = resource_client
 
@@ -299,6 +304,7 @@ def test_audio_upload_transcribes_and_saves_only_after_explicit_consent(
 def test_transcription_provider_failure_leaves_audio_unstored_and_returns_error(
     resource_client: tuple[TestClient, Session, UserProfile, Subject], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    mock_storage(monkeypatch)
     client, db, _, subject = resource_client
 
     def failed_transcription(*args, **kwargs):

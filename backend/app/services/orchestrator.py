@@ -324,9 +324,8 @@ def _log_decision(
     )
     db.add(decision)
     try:
-        db.commit()
+        db.flush()
     except Exception:
-        db.rollback()
         logger.warning("[orchestrator] Failed to persist decision log")
 
 

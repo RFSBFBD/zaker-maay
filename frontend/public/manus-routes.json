@@ -1,0 +1,32 @@
+{
+  "routes": [
+    {
+      "path": "/",
+      "type": "public"
+    },
+    {
+      "path": "/login",
+      "type": "public"
+    },
+    {
+      "path": "/auth/callback",
+      "type": "auth"
+    },
+    {
+      "path": "/dashboard",
+      "type": "protected"
+    },
+    {
+      "path": "/subjects",
+      "type": "protected"
+    },
+    {
+      "path": "/subjects/:subjectId",
+      "type": "protected"
+    },
+    {
+      "path": "/admin",
+      "type": "admin"
+    }
+  ]
+}

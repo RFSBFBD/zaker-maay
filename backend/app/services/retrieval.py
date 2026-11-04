@@ -46,6 +46,7 @@ def retrieve_for_subject(db: Session, *, subject_id: UUID, query: str, limit: in
     resource_documents = [(chunk, resource, tokenize(chunk.content)) for chunk, resource in rows]
     yt_rows = db.execute(
         select(YouTubeChunk, YouTubeLink)
+        .join(YouTubeLink, YouTubeLink.id == YouTubeChunk.youtube_link_id)
         .where(YouTubeLink.subject_id == subject_id, YouTubeLink.processing_status == "ready")
     ).all()
     yt_documents = [(chunk, yt_link, tokenize(chunk.content)) for chunk, yt_link in yt_rows]

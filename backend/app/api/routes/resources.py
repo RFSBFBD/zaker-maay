@@ -194,15 +194,24 @@ def get_cloudinary_upload_params(
     }
 
 
-def _fetch_file_from_cloudinary(public_id: str, resource_type: str) -> tuple[bytes, str]:
-    """Download a file from Cloudinary by its public_id for local processing.
+def _fetch_file_from_cloudinary(public_id: str, resource_type: str, secure_url: str | None = None) -> tuple[bytes, str]:
+    """Download a file from Cloudinary by its public_id or secure_url for local processing.
 
     Returns (content_bytes, mime_type_from_header).
     """
-    from cloudinary import utils as cu
-
     settings = get_settings()
-    url = cu.cloudinary_url(public_id, resource_type=resource_type, format="")[0]
+    if secure_url and secure_url.startswith("http"):
+        url = secure_url
+    else:
+        from cloudinary import utils as cu
+        url = cu.cloudinary_url(
+            public_id,
+            resource_type=resource_type,
+            cloud_name=settings.cloudinary_cloud_name,
+            api_key=settings.cloudinary_api_key,
+            api_secret=settings.cloudinary_api_secret,
+            format="",
+        )[0]
     resp = requests.get(url, timeout=120, stream=True)
     resp.raise_for_status()
     content = b""
@@ -242,7 +251,10 @@ def upload_resource(
 
     # Re-download from Cloudinary so we can compute sha256 and process content
     try:
-        content, mime_type = _fetch_file_from_cloudinary(cloudinary_public_id, resource_type)
+        try:
+            content, mime_type = _fetch_file_from_cloudinary(cloudinary_public_id, resource_type, cloudinary_secure_url)
+        except TypeError:
+            content, mime_type = _fetch_file_from_cloudinary(cloudinary_public_id, resource_type)
     except HTTPException:
         raise
     except Exception as exc:

@@ -54,7 +54,7 @@ def to_response(session: StudySession) -> SessionResponse:
 
 
 def _require_student(profile: UserProfile) -> None:
-    if profile.role not in ("student", "admin"):
+    if profile.role != "student":
         raise HTTPException(status_code=403, detail="Student access required.")
 
 

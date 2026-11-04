@@ -19,7 +19,6 @@ import {
   UserIcon,
   TrashIcon,
   PlusIcon,
-  WandIcon,
   SparklesIcon,
   AlertCircleIcon,
   XIcon,
@@ -76,14 +75,6 @@ type PersistedMessageItem = {
   no_resources?: boolean;
   out_of_scope?: boolean;
   created_at: string;
-};
-
-type ImageResponse = {
-  type: "image" | "svg";
-  title: string;
-  description: string;
-  image_url?: string;
-  svg?: string;
 };
 
 type SubjectInfo = {
@@ -275,7 +266,6 @@ function FullScreenChat({
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [generatingImage, setGeneratingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -310,7 +300,7 @@ function FullScreenChat({
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, sending, generatingImage]);
+  }, [messages, sending]);
 
   async function handleSelectThread(threadId: string) {
     if (threadId === activeThreadId) {
@@ -443,55 +433,6 @@ function FullScreenChat({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void handleSend();
-  }
-
-  async function handleGenerateIllustration() {
-    const prompt = input.trim() || messages[messages.length - 1]?.content || "رسم توضيحي للدرس";
-    if (generatingImage) return;
-
-    setGeneratingImage(true);
-    setError(null);
-
-    const userNote: ChatMessage = {
-      id: createLocalMessageId("req"),
-      role: "user",
-      content: `طلب رسم توضيحي بالذكاء الاصطناعي لـ: «${prompt.slice(0, 80)}»`,
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, userNote]);
-    setInput("");
-
-    try {
-      const headers = await getHeaders();
-      const result = await apiRequest<ImageResponse>(
-        `/api/v1/subjects/${subjectId}/images/generate`,
-        {
-          method: "POST",
-          headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, context: prompt }),
-        },
-        45_000
-      );
-
-      const assistantImageMsg: ChatMessage = {
-        id: createLocalMessageId("img"),
-        role: "assistant",
-        content: `تم إنشاء المخطط والرسم التوضيحي التعليمي (${result.title}):`,
-        timestamp: new Date(),
-        media: {
-          type: result.type,
-          url: result.image_url,
-          svg: result.svg,
-          title: result.title,
-        },
-      };
-      setMessages((prev) => [...prev, assistantImageMsg]);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "تعذر إنشاء الرسم التوضيحي.");
-    } finally {
-      setGeneratingImage(false);
-      inputRef.current?.focus();
-    }
   }
 
   const activeThread = threads.find((t) => t.id === activeThreadId);
@@ -817,26 +758,6 @@ function FullScreenChat({
             >
               <SparklesIcon size={16} style={{ color: "var(--green)" }} />
               <span>المساعد يفكر ويستخرج الشرح من مصادر المادة…</span>
-            </div>
-          </div>
-        )}
-
-        {generatingImage && (
-          <div style={{ alignSelf: "flex-end", maxWidth: "80%" }}>
-            <div
-              className="card"
-              style={{
-                padding: "12px 18px",
-                borderRadius: 14,
-                color: "var(--muted)",
-                fontSize: 13.5,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <WandIcon size={16} style={{ color: "var(--orange)" }} />
-              <span>جارٍ توليد الرسم التوضيحي التعليمي…</span>
             </div>
           </div>
         )}
