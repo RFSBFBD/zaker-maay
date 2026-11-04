@@ -29,6 +29,14 @@ from app.services.ai_router import SUPPORTED_TASK_TYPES, resolve_ai_config
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 
+
+def _require_admin(profile: UserProfile) -> None:
+    if profile.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privilege required.",
+        )
+
 def _mask_key(key: str | None) -> str:
     if not key:
         return "المفتاح العام"

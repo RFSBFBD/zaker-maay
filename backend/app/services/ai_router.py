@@ -108,7 +108,7 @@ def resolve_ai_config(
                     task_type=task_type,
                     model_name=resolved_model,
                     api_key=config.api_key or base_default_key,
-                    temperature=base_temp,
+                    temperature=config.temperature if config.temperature is not None else base_temp,
                     max_output_tokens=config.max_output_tokens or base_tokens,
                 )
         except Exception as exc:
