@@ -397,7 +397,7 @@ function FullScreenChat({
     try {
       const headers = await getHeaders();
       const response = await apiRequest<ChatResponse>(
-        `/api/v1/subjects/${subjectId}/chat/`,
+        `/api/v1/subjects/${subjectId}/chat`,
         {
           method: "POST",
           headers: { ...headers, "Content-Type": "application/json" },

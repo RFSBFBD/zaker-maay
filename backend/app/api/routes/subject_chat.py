@@ -414,7 +414,8 @@ def _is_image_request(message: str) -> bool:
 
 # ── MAIN CHAT ENDPOINT WITH PERSISTENCE ──────────────────────────────────────
 
-@router.post("/", response_model=ChatResponse)
+@router.post("", response_model=ChatResponse)
+@router.post("/", response_model=ChatResponse, include_in_schema=False)
 def chat(
     subject_id: UUID,
     payload: ChatRequest,
