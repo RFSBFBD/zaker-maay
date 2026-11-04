@@ -123,6 +123,28 @@ def resolve_ai_config(
     )
 
 
+
+
+def resolve_fallback_model(task_type: str, db: Session | None = None) -> str | None:
+    """Return configured fallback model name for a task if active and present."""
+    if db is None:
+        return None
+    try:
+        from app.db.models import AIModelConfig
+
+        row = db.scalar(
+            select(AIModelConfig).where(
+                AIModelConfig.task_type == task_type,
+                AIModelConfig.is_active.is_(True),
+                AIModelConfig.fallback_model.is_not(None),
+            )
+        )
+        if row and row.fallback_model and row.fallback_model.strip():
+            return row.fallback_model.strip()
+    except Exception as exc:
+        logger.warning("Could not read fallback model for %s: %s", task_type, exc)
+    return None
+
 def safe_call_ai(func: Callable[..., Any], *args: Any, db: Session | None = None, **kwargs: Any) -> Any:
     """Call an AI generator passing db if supported, or without it if monkeypatched in tests."""
     try:

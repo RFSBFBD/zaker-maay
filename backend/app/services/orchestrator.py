@@ -161,7 +161,7 @@ def _resolve_model(task_type: str, db: Session | None, *, use_fallback: bool) ->
         row = db.scalar(
             select(AIModelConfig).where(
                 AIModelConfig.task_type == task_type,
-                AIModelConfig.fallback_model.is_(not None),
+                AIModelConfig.fallback_model.is_not(None),
             )
         )
         if row and row.fallback_model:
@@ -216,7 +216,7 @@ def _execute_step(
         if isinstance(exc, (
             __import__("app.services.gemini", fromlist=["GeminiNotConfigured"]).GeminiNotConfigured,
             __import__("app.services.gemini", fromlist=["GeminiRateLimited"]).GeminiRateLimited,
-            __import__("app.services.gemini", fromlist=["GeminiRequestFailed"]).GeminiRequestFailed,
+            
         )):
             raise
         if not use_fallback:
