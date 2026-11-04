@@ -507,6 +507,7 @@ def chat(
             title="محادثة جديدة",
         )
         db.add(thread)
+        db.flush()
 
     # 2. Check if this subject has any resources uploaded
     has_resources = db.scalar(
