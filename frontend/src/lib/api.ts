@@ -4,7 +4,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 export async function apiRequest<T>(path: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
   const isGenerationRequest = /\/(quizzes|study-artifacts|chat|assistant|images\/generate)(\/|$|\?)/.test(path);
-  const effectiveTimeout = timeoutMs ?? (isGenerationRequest ? 55_000 : 20_000);
+  const effectiveTimeout = timeoutMs ?? (isGenerationRequest ? 75_000 : 20_000);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), effectiveTimeout);
   try {

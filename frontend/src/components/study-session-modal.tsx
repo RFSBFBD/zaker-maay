@@ -90,7 +90,7 @@ export function StudySessionModal({ currentSubjectId }: { currentSubjectId?: str
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          subject_id: selectedSubjectId,
+          subject_id: currentSubjectId || selectedSubjectId,
           duration_minutes: durationMinutes,
         }),
       });

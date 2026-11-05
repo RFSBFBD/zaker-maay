@@ -371,12 +371,12 @@ export function AdminDashboard() {
           api_key: apiKeyInput.trim() || undefined,
           temperature: tempInput,
           max_output_tokens: tokensInput,
-          is_active: false,
+          is_active: true,
           fallback_model: fallbackModelInput.trim() || undefined,
           description: descInput.trim() || undefined,
         }),
       });
-      setAiConfigs((prev) => [...prev, created]);
+      setAiConfigs((prev) => prev.some((c) => c.task_type === created.task_type) ? prev.map((c) => (c.task_type === created.task_type ? created : c)) : [...prev, created]);
       setNotice(`تم إضافة إعداد مهمة ${created.task_label} بنجاح.`);
       setIsAdding(false);
     } catch (cause) {

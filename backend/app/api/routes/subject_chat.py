@@ -399,7 +399,7 @@ def delete_thread(
 # Arabic and English keywords that indicate the user wants an image/illustration generated
 _IMAGE_REQUEST_KEYWORDS = [
     "ارسم", "رسم", "صورة", "img", "diagram", "schema",
-    "Show me", "draw", "image", "Illustration", "Concept",
+    "Show me", "draw", "image", "Illustration", "Concept", "صوره", "مخطط", "رسمة", "رسمه", "شكل", "تخطيط", "توضيحي",
 ]
 
 
@@ -455,6 +455,12 @@ def chat(
                 )
                 db.add(thread)
             db.flush()
+            db.add(DBChatMessage(
+                id=uuid4(),
+                thread_id=thread.id,
+                role="user",
+                content=payload.message.strip(),
+            ))
 
             asst_msg = DBChatMessage(
                 id=uuid4(),

@@ -424,13 +424,13 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
                       }}
                     >
                       {link.processing_status === "ready"
-                        ? "✅ النص جاهز"
+                        ? "🧠 تم الاستيعاب — الوكيل يذاكر ويجيب منه"
                         : link.processing_status === "no_captions"
-                        ? "⚠️ لا توجد ترجمة"
+                        ? "⚠️ للمشاهدة فقط — لا تتوفر ترجمة ليذاكر منها الوكيل"
                         : link.processing_status === "pending"
-                        ? "⏳ جاري الاستخراج..."
+                        ? "⏳ جاري قراءة تفريغ الفيديو..."
                         : link.processing_status === "failed"
-                        ? "❌ فشل"
+                        ? "❌ تعذر قراءة نصوص الفيديو"
                         : "🔄"}
                     </span>
                   </div>

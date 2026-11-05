@@ -95,7 +95,7 @@ export function SubjectQuizzes({ subjectId }: { subjectId: string }) {
       const created = await apiRequest<QuizView>(`/api/v1/subjects/${subjectId}/quizzes`, {
         method: "POST",
         headers,
-      }, 55_000);
+      }, 75_000);
       setQuizzes((prev) => [
         {
           id: created.id,

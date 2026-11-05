@@ -244,64 +244,131 @@ export function SubjectFlashcards({ subjectId }: { subjectId: string }) {
             بطاقة {currentCardIndex + 1} من {cards.length}
           </div>
 
-          {/* FLIP CARD CONTAINER */}
+          {/* REAL 3D FLIP CARD PERSPECTIVE CONTAINER */}
           <div
             onClick={() => setIsFlipped((prev) => !prev)}
             style={{
               width: "100%",
               maxWidth: 580,
-              minHeight: 280,
-              background: isFlipped ? "var(--paper)" : "var(--surface, #fff)",
-              border: `2px solid ${isFlipped ? "var(--green)" : "var(--line)"}`,
-              borderRadius: 18,
-              padding: "36px 30px",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
+              minHeight: 320,
+              perspective: 1200,
               cursor: "pointer",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-              alignItems: "center",
-              textAlign: "center",
-              transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1) both",
               userSelect: "none",
-              transformStyle: "preserve-3d",
             }}
           >
-            {/* Top Indicator */}
-            <span
+            <div
               style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: isFlipped ? "var(--green)" : "var(--muted)",
-                background: isFlipped ? "rgba(100, 140, 90, 0.15)" : "rgba(0,0,0,0.04)",
-                padding: "4px 12px",
-                borderRadius: 20,
+                position: "relative",
+                width: "100%",
+                minHeight: 320,
+                transformStyle: "preserve-3d",
+                transition: "transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
+                transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
               }}
             >
-              {isFlipped ? "💡 الإجابة والشرح (الوجه الخلفي)" : "❓ السؤال / المفهوم (الوجه الأمامي)"}
-            </span>
-
-            {/* Card Content Text */}
-            <div style={{ margin: "24px 0", width: "100%" }}>
-              <p
+              {/* FRONT FACE (Question) */}
+              <div
                 style={{
-                  margin: 0,
-                  fontSize: 18,
-                  lineHeight: 1.8,
-                  fontWeight: 600,
-                  color: "var(--ink)",
-                  whiteSpace: "pre-wrap",
+                  position: "absolute",
+                  inset: 0,
+                  backfaceVisibility: "hidden",
+                  WebkitBackfaceVisibility: "hidden",
+                  background: "var(--surface, #fff)",
+                  border: "2px solid var(--line)",
+                  borderRadius: 20,
+                  padding: "36px 30px",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  textAlign: "center",
                 }}
               >
-                {isFlipped ? currentCard.back : currentCard.front}
-              </p>
-            </div>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "var(--muted)",
+                    background: "rgba(0,0,0,0.05)",
+                    padding: "4px 14px",
+                    borderRadius: 20,
+                  }}
+                >
+                  ❓ السؤال / المفهوم (الوجه الأمامي)
+                </span>
+                <div style={{ margin: "24px 0", width: "100%" }}>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 19,
+                      lineHeight: 1.8,
+                      fontWeight: 600,
+                      color: "var(--ink)",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {currentCard.front}
+                  </p>
+                </div>
+                <span style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>🔄</span>
+                  <span>انقر لقلب البطاقة ومعرفة الإجابة</span>
+                </span>
+              </div>
 
-            {/* Bottom Flip Hint */}
-            <span style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
-              <span>🔄</span>
-              <span>انقر في أي مكان لقلب البطاقة</span>
-            </span>
+              {/* BACK FACE (Answer) */}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  backfaceVisibility: "hidden",
+                  WebkitBackfaceVisibility: "hidden",
+                  transform: "rotateY(180deg)",
+                  background: "var(--mint, #f2f7f3)",
+                  border: "2px solid var(--green)",
+                  borderRadius: 20,
+                  padding: "36px 30px",
+                  boxShadow: "0 12px 32px rgba(46, 125, 50, 0.12)",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  textAlign: "center",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "var(--green)",
+                    background: "rgba(100, 140, 90, 0.2)",
+                    padding: "4px 14px",
+                    borderRadius: 20,
+                  }}
+                >
+                  💡 الإجابة والشرح (الوجه الخلفي)
+                </span>
+                <div style={{ margin: "24px 0", width: "100%" }}>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 18,
+                      lineHeight: 1.8,
+                      fontWeight: 600,
+                      color: "var(--ink)",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {currentCard.back}
+                  </p>
+                </div>
+                <span style={{ fontSize: 12, color: "var(--green)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>✓</span>
+                  <span>انقر للعودة إلى السؤال</span>
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Navigation Controls */}

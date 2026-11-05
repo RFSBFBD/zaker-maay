@@ -134,21 +134,47 @@ def sample_for_subject(db: Session, *, subject_id: UUID, limit: int = 4) -> list
             if resource.id not in seen_resources:
                 selected.append(
                     (
-                        type("Chunk", (), {"content": resource.transcript_text, "chunk_index": 0})(),
+                        type("Chunk", (), {"content": resource.transcript_text, "chunk_index": 0, "page_number": None})(),
                         resource,
                     )
                 )
                 seen_resources.add(resource.id)
                 if len(selected) >= limit:
                     break
-    return [
-        RetrievedPassage(
-            resource_id=resource.id,
-            file_name=resource.file_name,
-            page_number=chunk.page_number,
-            chunk_index=chunk.chunk_index,
-            content=chunk.content,
-            score=1.0,
-        )
-        for chunk, resource in selected[: max(1, min(limit, 8))]
-    ]
+    if len(selected) < limit:
+        yt_rows = db.execute(
+            select(YouTubeChunk, YouTubeLink)
+            .join(YouTubeLink, YouTubeLink.id == YouTubeChunk.youtube_link_id)
+            .where(YouTubeLink.subject_id == subject_id, YouTubeLink.processing_status == "ready")
+            .order_by(YouTubeChunk.chunk_index)
+        ).all()
+        for chunk, yt_link in yt_rows:
+            selected.append((chunk, yt_link))
+            if len(selected) >= limit:
+                break
+
+    passages: list[RetrievedPassage] = []
+    for chunk, source in selected[: max(1, min(limit, 8))]:
+        if isinstance(source, Resource):
+            passages.append(
+                RetrievedPassage(
+                    resource_id=source.id,
+                    file_name=source.file_name,
+                    page_number=getattr(chunk, "page_number", None),
+                    chunk_index=getattr(chunk, "chunk_index", 0),
+                    content=chunk.content,
+                    score=1.0,
+                )
+            )
+        elif isinstance(source, YouTubeLink):
+            passages.append(
+                RetrievedPassage(
+                    resource_id=source.id,
+                    file_name=f"فيديو: {source.title or source.video_id}",
+                    page_number=None,
+                    chunk_index=getattr(chunk, "chunk_index", 0),
+                    content=chunk.content,
+                    score=1.0,
+                )
+            )
+    return passages

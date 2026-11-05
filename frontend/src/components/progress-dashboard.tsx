@@ -80,7 +80,12 @@ export function ProgressDashboard() {
   const [inquiriesData, setInquiriesData] = useState<InquiriesResponse>({ inquiries: [], unread_count: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"evaluation" | "inquiries">("evaluation");
+  const [activeTab, setActiveTab] = useState<"evaluation" | "inquiries">(() => {
+    if (typeof window !== "undefined" && window.location.search.includes("tab=inquiries")) {
+      return "inquiries";
+    }
+    return "evaluation";
+  });
 
   useEffect(() => {
     let active = true;

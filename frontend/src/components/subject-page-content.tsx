@@ -669,10 +669,17 @@ function FullScreenChat({
                     }}
                   >
                     <AlertCircleIcon size={16} style={{ color: "var(--orange)", flexShrink: 0 }} />
-                    <span>
+                    <span style={{ flex: 1 }}>
                       <strong>تنبيه:</strong> هذا السؤال لم يُذكر في مراجع المادة، وتم إرساله إلى إدارة المادة لمراجعته
                       والرد عليك في الإشعارات.
                     </span>
+                    <Link
+                      href="/dashboard?tab=inquiries"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: 12, flexShrink: 0, padding: "4px 10px" }}
+                    >
+                      متابعة استفساراتي ←
+                    </Link>
                   </div>
                 )}
 
@@ -792,6 +799,23 @@ function FullScreenChat({
           }}
           aria-label="اقتراحات سريعة"
         >
+          <button
+            type="button"
+            onClick={() => void handleSend("ارسم لي مخططًا توضيحيًا يشرح أهم فكرة في هذا الدرس")}
+            disabled={sending}
+            className="btn btn-ghost btn-sm"
+            style={{
+              borderRadius: 20,
+              border: "1px solid var(--green)",
+              background: "var(--mint)",
+              color: "var(--green)",
+              fontSize: 12.5,
+              fontWeight: 700,
+              flexShrink: 0,
+            }}
+          >
+            <span>🎨 ارسم مخططاً توضيحياً</span>
+          </button>
           {(suggestedReplies.length > 0 ? suggestedReplies : QUICK_PROMPTS).map((prompt, idx) => (
             <button
               key={idx}
