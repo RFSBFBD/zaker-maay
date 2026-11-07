@@ -31,7 +31,7 @@ from app.services.document_processing import process_document
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/subjects/{subject_id}/resources", tags=["resources"])
 
-MAX_FILE_BYTES = 100 * 1024 * 1024
+MAX_FILE_BYTES = 50 * 1024 * 1024  # 50 MiB — balanced against the 60s Vercel function timeout
 ALLOWED_TYPES: dict[str, tuple[str, str]] = {
     ".pdf": ("application/pdf", "raw"),
     ".txt": ("text/plain", "raw"),
@@ -227,7 +227,7 @@ def get_gemini_upload_url(
         raise HTTPException(status_code=422, detail="التفريغ الصوتي يدعم ملفات MP3 و WAV و M4A فقط.")
 
     if file_size > MAX_FILE_BYTES:
-        raise HTTPException(status_code=413, detail="حجم الملف يتجاوز الحد الأقصى المسموح به (100 ميغابايت).")
+        raise HTTPException(status_code=413, detail="حجم الملف يتجاوز الحد الأقصى المسموح به (50 ميغابايت).")
 
     res = requests.post(
         "https://generativelanguage.googleapis.com/upload/v1beta/files",
@@ -346,7 +346,7 @@ def _fetch_file_from_cloudinary(public_id: str, resource_type: str, secure_url: 
                 tmp.write(chunk)
                 content += chunk
                 if len(content) > MAX_FILE_BYTES + 1:
-                    raise HTTPException(status_code=413, detail="File exceeds the 100 MiB limit.")
+                    raise HTTPException(status_code=413, detail="File exceeds the 50 MiB limit.")
         tmp.seek(0)
         headers = dict(resp.headers)
         mime_type = headers.get("content-type", "application/octet-stream").split(";")[0]
@@ -386,7 +386,7 @@ def upload_resource(
         raise HTTPException(status_code=502, detail="تعذر تنزيل الملف المرفوع للمعالجة.") from None
 
     if len(content) > MAX_FILE_BYTES:
-        raise HTTPException(status_code=413, detail="File exceeds the 100 MiB limit.")
+        raise HTTPException(status_code=413, detail="File exceeds the 50 MiB limit.")
     if not content:
         raise HTTPException(status_code=422, detail="Empty files are not supported.")
     mime_type = _validate_content(content, extension)

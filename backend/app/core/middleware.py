@@ -10,7 +10,7 @@ class UploadTooLarge(Exception):
 class UploadBodyLimitMiddleware:
     """Bound multipart request bodies before Starlette spools uploaded files."""
 
-    def __init__(self, app: Callable[..., Awaitable[None]], max_bytes: int = 21 * 1024 * 1024) -> None:
+    def __init__(self, app: Callable[..., Awaitable[None]], max_bytes: int = 55 * 1024 * 1024) -> None:
         self.app = app
         self.max_bytes = max_bytes
 
@@ -61,7 +61,7 @@ class UploadBodyLimitMiddleware:
         receive: Callable[..., Awaitable[dict[str, Any]]],
         send: Callable[..., Awaitable[None]],
     ) -> None:
-        body = json.dumps({"detail": "Upload request exceeds the 20 MiB file limit."}).encode("utf-8")
+        body = json.dumps({"detail": "Upload request exceeds the 50 MiB file limit."}).encode("utf-8")
         await send(
             {
                 "type": "http.response.start",
