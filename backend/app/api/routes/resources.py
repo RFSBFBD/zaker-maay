@@ -64,6 +64,13 @@ class ResourceResponse(BaseModel):
         return bool(self.transcript_language and self.audio_duration_seconds)
 
 
+class TranscribeGeminiFileRequest(BaseModel):
+    gemini_file_name: str
+    file_name: str
+    size_bytes: int
+    mime_type: str = "audio/mp4"
+
+
 class DownloadResponse(BaseModel):
     download_url: str
     expires_in_seconds: int = 600
@@ -192,6 +199,123 @@ def get_cloudinary_upload_params(
         "resource_type": resource_type,
         "signature": signature,
     }
+
+
+@router.post("/gemini-upload-url", response_model=dict)
+def get_gemini_upload_url(
+    subject_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+    file_name: str = Query(...),
+    file_size: int = Query(...),
+    mime_type: str = Query("audio/mp4"),
+) -> dict:
+    """Generate a resumable Gemini upload URL so the browser can upload audio directly to the AI agent."""
+    _accessible_subject(db, subject_id, profile)
+    settings = get_settings()
+    ai_cfg = resolve_ai_config(
+        "audio_transcription",
+        db=db,
+        default_model=settings.gemini_model,
+        default_key=settings.gemini_api_key,
+    )
+    if not ai_cfg.api_key:
+        raise HTTPException(status_code=503, detail="خدمة التفريغ الذكي غير مهيأة.")
+
+    _, extension = _safe_filename(file_name)
+    if extension not in TRANSCRIBABLE_EXTENSIONS:
+        raise HTTPException(status_code=422, detail="التفريغ الصوتي يدعم ملفات MP3 و WAV و M4A فقط.")
+
+    if file_size > MAX_FILE_BYTES:
+        raise HTTPException(status_code=413, detail="حجم الملف يتجاوز الحد الأقصى المسموح به (100 ميغابايت).")
+
+    res = requests.post(
+        "https://generativelanguage.googleapis.com/upload/v1beta/files",
+        headers={
+            "x-goog-api-key": ai_cfg.api_key,
+            "X-Goog-Upload-Protocol": "resumable",
+            "X-Goog-Upload-Command": "start",
+            "X-Goog-Upload-Header-Content-Length": str(file_size),
+            "X-Goog-Upload-Header-Content-Type": mime_type,
+            "Content-Type": "application/json",
+        },
+        json={"file": {"display_name": file_name}},
+        timeout=15,
+    )
+    if res.status_code != 200:
+        logger.error("Failed to initiate Gemini upload: %s %s", res.status_code, res.text)
+        raise HTTPException(status_code=502, detail="تعذر الاتصال بخدمة الذكاء الاصطناعي.")
+
+    upload_url = res.headers.get("x-goog-upload-url")
+    if not upload_url:
+        raise HTTPException(status_code=502, detail="تعذر الحصول على رابط رفع التسجيل الصوتي.")
+
+    return {"upload_url": upload_url}
+
+
+@router.post("/process-audio-transcript", response_model=ResourceResponse, status_code=status.HTTP_201_CREATED)
+def process_audio_transcript(
+    subject_id: UUID,
+    payload: TranscribeGeminiFileRequest,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Resource:
+    """Transcribe an audio file uploaded directly to Gemini and index the transcript as study material."""
+    _accessible_subject(db, subject_id, profile)
+    _, extension = _safe_filename(payload.file_name)
+    if extension not in TRANSCRIBABLE_EXTENSIONS:
+        raise HTTPException(status_code=422, detail="التفريغ الصوتي يدعم ملفات MP3 و WAV و M4A فقط.")
+
+    try:
+        transcript = gemini.transcribe_gemini_file(
+            payload.gemini_file_name,
+            payload.mime_type,
+            db=db,
+        )
+    except gemini.GeminiNotConfigured:
+        raise HTTPException(status_code=503, detail="خدمة التفريغ الذكي غير مهيأة.")
+    except (gemini.GeminiRateLimited, gemini.GeminiRequestFailed) as exc:
+        logger.exception("Gemini audio transcription failed: %s", exc)
+        raise HTTPException(status_code=502, detail="تعذر تفريغ الملف الصوتي بواسطة الذكاء الاصطناعي.")
+
+    # Process the transcript text into chunks for the AI Agent
+    transcript_bytes = transcript.transcript.encode("utf-8")
+    processed = process_document(
+        f"{PurePosixPath(payload.file_name).stem}.txt",
+        transcript_bytes,
+    )
+
+    sha256 = hashlib.sha256(f"{payload.file_name}:{uuid4().hex}".encode()).hexdigest()
+    resource = Resource(
+        subject_id=subject_id,
+        uploaded_by=profile.id,
+        file_name=payload.file_name,
+        mime_type=payload.mime_type,
+        size_bytes=payload.size_bytes,
+        sha256=sha256,
+        cloudinary_public_id=f"audio-transcript/{uuid4().hex}",
+        secure_url="internal://audio-transcript",
+        transcript_text=transcript.transcript,
+        transcript_language=transcript.language,
+        transcription_model="gemini",
+        audio_duration_seconds=None,
+        processing_status=processed.status,
+    )
+    db.add(resource)
+    db.flush()
+
+    for chunk in processed.chunks:
+        db.add(
+            ResourceChunk(
+                resource_id=resource.id,
+                chunk_index=chunk.chunk_index,
+                page_number=chunk.page_number,
+                content=chunk.content,
+            )
+        )
+    db.commit()
+    db.refresh(resource)
+    return resource
 
 
 def _fetch_file_from_cloudinary(public_id: str, resource_type: str, secure_url: str | None = None) -> tuple[bytes, str]:
@@ -465,6 +589,11 @@ def get_download_url(
     resource = db.scalar(select(Resource).where(Resource.id == resource_id, Resource.subject_id == subject_id))
     if resource is None:
         raise HTTPException(status_code=404, detail="Resource not found.")
+    if resource.cloudinary_public_id.startswith("audio-transcript/") or resource.secure_url.startswith("internal://"):
+        import urllib.parse
+        encoded = urllib.parse.quote(resource.transcript_text or "")
+        return DownloadResponse(download_url=f"data:text/plain;charset=utf-8,{encoded}")
+
     extension = PurePosixPath(resource.file_name).suffix.lower()
     resource_type = ALLOWED_TYPES.get(extension, ("", ""))[1]
     try:
@@ -493,14 +622,15 @@ def delete_resource(
         raise HTTPException(status_code=404, detail="Resource not found.")
     if profile.role != "admin" and resource.uploaded_by != profile.id:
         raise HTTPException(status_code=403, detail="Only the uploader or an admin can delete this file.")
-    extension = PurePosixPath(resource.file_name).suffix.lower()
-    resource_type = ALLOWED_TYPES.get(extension, ("", ""))[1]
-    try:
-        cloudinary_storage.delete_asset(public_id=resource.cloudinary_public_id, resource_type=resource_type)
-    except cloudinary_storage.StorageNotConfigured:
-        raise HTTPException(status_code=503, detail="File storage is not configured.") from None
-    except cloudinary_storage.StorageOperationFailed:
-        raise HTTPException(status_code=502, detail="File storage could not delete the file.") from None
+    if not resource.cloudinary_public_id.startswith("audio-transcript/"):
+        extension = PurePosixPath(resource.file_name).suffix.lower()
+        resource_type = ALLOWED_TYPES.get(extension, ("", ""))[1]
+        try:
+            cloudinary_storage.delete_asset(public_id=resource.cloudinary_public_id, resource_type=resource_type)
+        except cloudinary_storage.StorageNotConfigured:
+            raise HTTPException(status_code=503, detail="File storage is not configured.") from None
+        except cloudinary_storage.StorageOperationFailed:
+            raise HTTPException(status_code=502, detail="File storage could not delete the file.") from None
     try:
         db.delete(resource)
         db.commit()

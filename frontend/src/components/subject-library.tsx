@@ -146,9 +146,62 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
 
     try {
       const headers = await getHeaders();
-      // 1. Get signed upload params from backend
+      const isAudio = file.type.startsWith("audio/") || /\.(mp3|wav|m4a|ogg)$/i.test(file.name);
+
+      // Direct upload to AI Agent for audio files (bypassing double storage)
+      if (isAudio) {
+        setNotice("جارٍ رفع التسجيل الصوتي مباشرة إلى المساعد الذكي…");
+        const { upload_url } = await apiRequest<{ upload_url: string }>(
+          `/api/v1/subjects/${subjectId}/resources/gemini-upload-url?file_name=${encodeURIComponent(file.name)}&file_size=${file.size}&mime_type=${encodeURIComponent(file.type || "audio/mp4")}`,
+          { method: "POST", headers }
+        );
+
+        const uploadResp = await fetch(upload_url, {
+          method: "POST",
+          headers: {
+            "Content-Length": file.size.toString(),
+            "X-Goog-Upload-Offset": "0",
+            "X-Goog-Upload-Command": "upload, finalize",
+          },
+          body: file,
+        });
+
+        if (!uploadResp.ok) {
+          throw new Error("تعذر إرسال التسجيل الصوتي إلى خدمة المساعد الذكي.");
+        }
+        const uploadData = await uploadResp.json();
+        const geminiFileName = uploadData?.file?.name;
+        if (!geminiFileName) {
+          throw new Error("تعذر إكمال رفع التسجيل الصوتي.");
+        }
+
+        setNotice("تم رفع الصوت بنجاح! جارٍ الآن التفريغ النصي الذكي وإضافته كمرجع دراسي…");
+
+        const created = await apiRequest<Resource>(
+          `/api/v1/subjects/${subjectId}/resources/process-audio-transcript`,
+          {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              gemini_file_name: geminiFileName,
+              file_name: file.name,
+              size_bytes: file.size,
+              mime_type: file.type || "audio/mp4",
+            }),
+          },
+          120_000
+        );
+
+        setResources((current) => [created, ...current]);
+        form.reset();
+        setTranscribeAudio(false);
+        setNotice("تم تفريغ المحاضرة الصوتية بنجاح وإضافتها كمرجع دراسي يعتمد عليه المساعد الذكي!");
+        return;
+      }
+
+      // 1. Get signed upload params from backend for documents
       const params = await apiRequest<Record<string, string>>(
-        `/api/v1/subjects/${subjectId}/resources/upload-params?file_name=${encodeURIComponent(file.name)}&resource_type=${file.type.startsWith("audio/") ? "video" : "raw"}`,
+        `/api/v1/subjects/${subjectId}/resources/upload-params?file_name=${encodeURIComponent(file.name)}&resource_type=raw`,
         { headers }
       );
 
