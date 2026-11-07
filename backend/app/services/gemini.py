@@ -800,8 +800,17 @@ def generate_concept_illustration(
             except Exception as img_exc:
                 logger.warning("Imagen generation failed: %s. Attempting fallback to SVG.", img_exc)
 
-        # Otherwise, generate a clear, styled SVG educational diagram
-        candidate_models = [ai_cfg.model_name, "gemini-3.5-flash-lite"]
+        # Determine meaningful illustration topic
+        topic = prompt.strip()
+        generic_phrases = ["عايز اعمل صوره توضيحيه", "عايز صوره توضيحيه", "عايز صوره", "اعملي صوره", "رسم توضيحي", "صوره توضيحيه", "ارسم لي", "ارسم صوره"]
+        if any(topic.lower() == g for g in generic_phrases) or (len(topic) < 25 and any(p in topic for p in ["صوره", "صورة", "رسم", "مخطط"])):
+            if context and len(context) > 20:
+                topic = f"مخطط مفاهيمي لدروس ومفاهيم المادة ({prompt})"
+            else:
+                topic = f"مخطط توضيحي للمادة ({prompt})"
+
+        # Generate a clear, styled SVG educational diagram
+        candidate_models = [ai_cfg.model_name or "gemini-3.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
         seen_models = set()
         text = ""
 
@@ -813,22 +822,23 @@ def generate_concept_illustration(
                 response = client.models.generate_content(
                     model=model_candidate,
                     contents=(
-                        f"Create a clean, beautiful, modern educational SVG diagram or visual concept map illustrating:\n"
-                        f"Topic: {prompt}\nContext: {context[:2000]}\n\n"
+                        f"Create a clean, beautiful, high-quality modern educational SVG diagram or visual concept map illustrating:\n"
+                        f"Topic: {topic}\nContext: {context[:2000]}\n\n"
                         "Requirements:\n"
-                        "- Output ONLY valid raw <svg viewBox='0 0 800 500' xmlns='http://www.w3.org/2000/svg'>...</svg> markup\n"
-                        "- Use pleasant academic colors (#315f50 for primary, #d9e8db for accents, #18332e for text, white background #ffffff)\n"
+                        "- Output ONLY valid raw <svg viewBox='0 0 800 480' xmlns='http://www.w3.org/2000/svg'>...</svg> markup\n"
+                        "- Use pleasant academic colors (#2d6a4f for primary, #d8f3dc for accents, #1b4332 for text, white background #ffffff)\n"
                         "- Include readable labels (Arabic text supported if prompt is in Arabic)\n"
+                        "- Ensure the diagram is visually informative with cards, arrows, flow paths, or bell curves as appropriate.\n"
                         "- Do NOT include any markdown code fences or explanatory text. Return the raw <svg> element directly."
                     ),
                     config=types.GenerateContentConfig(
                         system_instruction="You are an expert educational graphic designer and illustrator. Generate clean, valid, standalone SVG diagrams.",
                         temperature=0.2,
-                        max_output_tokens=3000,
+                        max_output_tokens=8192,
                     ),
                 )
                 text = response.text or ""
-                if text.strip():
+                if text.strip() and "<svg" in text:
                     break
             except Exception as gen_err:
                 logger.info("SVG generation with %s failed: %s; trying next fallback", model_candidate, gen_err)
@@ -844,30 +854,33 @@ def generate_concept_illustration(
 
         start_idx = text.find("<svg")
         end_idx = text.rfind("</svg>")
-        if start_idx != -1 and end_idx != -1:
-            svg_content = text[start_idx : end_idx + 6]
+        if start_idx != -1:
+            if end_idx != -1 and end_idx > start_idx:
+                svg_content = text[start_idx : end_idx + 6]
+            else:
+                svg_content = text[start_idx:] + "\n</svg>"
             return {
                 "type": "svg",
                 "svg": svg_content,
-                "title": prompt,
-                "description": f"مخطط ورسم توضيحي ذكي: {prompt}",
+                "title": topic,
+                "description": f"مخطط ورسم توضيحي ذكي: {topic}",
             }
 
-        safe_prompt = prompt.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+        safe_topic = topic.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
         fallback_svg = (
             f"<svg viewBox='0 0 700 240' xmlns='http://www.w3.org/2000/svg'>"
-            f"<rect width='700' height='240' rx='16' fill='#f4f7f5' stroke='#315f50' stroke-width='2'/>"
-            f"<circle cx='350' cy='70' r='36' fill='#d9e8db'/>"
-            f"<text x='350' y='78' text-anchor='middle' font-size='28'>🎨</text>"
-            f"<text x='350' y='140' text-anchor='middle' font-family='sans-serif' font-size='20' font-weight='bold' fill='#18332e'>{safe_prompt}</text>"
-            f"<text x='350' y='180' text-anchor='middle' font-family='sans-serif' font-size='14' fill='#557a6e'>تعذر إنشاء صورة واقعية، هذا رسم تخطيطي بديل</text>"
+            f"<rect width='700' height='240' rx='16' fill='#f4f7f5' stroke='#2d6a4f' stroke-width='2'/>"
+            f"<circle cx='350' cy='70' r='36' fill='#d8f3dc'/>"
+            f"<text x='350' y='78' text-anchor='middle' font-size='28'>📊</text>"
+            f"<text x='350' y='140' text-anchor='middle' font-family='sans-serif' font-size='20' font-weight='bold' fill='#1b4332'>{safe_topic}</text>"
+            f"<text x='350' y='180' text-anchor='middle' font-family='sans-serif' font-size='14' fill='#2d6a4f'>مخطط توضيحي تعليمي</text>"
             f"</svg>"
         )
         return {
             "type": "svg",
             "svg": fallback_svg,
-            "title": prompt,
-            "description": f"تعذر إنشاء صورة واقعية: {prompt}",
+            "title": topic,
+            "description": f"مخطط تعليمي: {topic}",
         }
     except Exception as exc:
         logger.warning("Illustration generation unexpected error: %s", exc)
