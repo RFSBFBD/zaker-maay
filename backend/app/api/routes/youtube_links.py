@@ -118,8 +118,8 @@ def _split_transcript(text: str) -> list[tuple[int, str]]:
     return chunks
 
 
-def _fetch_transcript_async(db: Session, link: YouTubeLink) -> None:
-    """Background fetch and store transcript for a YouTube link."""
+def _process_link_transcript(db: Session, link: YouTubeLink) -> None:
+    """Fetch and store transcript chunks for a YouTube link."""
     try:
         text = fetch_youtube_transcript(link.video_id)
         if text is None:
@@ -149,6 +149,26 @@ def _fetch_transcript_async(db: Session, link: YouTubeLink) -> None:
         db.commit()
 
 
+@router.get("", response_model=list[YouTubeLinkResponse])
+def list_youtube_links(
+    subject_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[YouTubeLink]:
+    _get_subject(db, subject_id, profile)
+    links = list(
+        db.scalars(
+            select(YouTubeLink)
+            .where(YouTubeLink.subject_id == subject_id)
+            .order_by(YouTubeLink.created_at.desc())
+        ).all()
+    )
+    for link in links:
+        if link.processing_status == "pending":
+            _process_link_transcript(db, link)
+    return links
+
+
 @router.post("", response_model=YouTubeLinkResponse, status_code=status.HTTP_201_CREATED)
 def add_youtube_link(
     subject_id: UUID,
@@ -175,9 +195,26 @@ def add_youtube_link(
         db.rollback()
         raise HTTPException(status_code=409, detail="This video is already linked to the subject.") from None
     db.refresh(link)
-    # Start async transcript fetch
-    t = threading.Thread(target=_fetch_transcript_async, args=(db, link), daemon=True)
-    t.start()
+    # Process transcript immediately so video is indexed as study reference
+    _process_link_transcript(db, link)
+    db.refresh(link)
+    return link
+
+
+@router.post("/{link_id}/sync", response_model=YouTubeLinkResponse)
+def sync_youtube_transcript(
+    subject_id: UUID,
+    link_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> YouTubeLink:
+    """Re-fetch and index transcript for a YouTube video so it acts as an AI reference."""
+    _get_subject(db, subject_id, profile)
+    link = db.scalar(select(YouTubeLink).where(YouTubeLink.id == link_id, YouTubeLink.subject_id == subject_id))
+    if link is None:
+        raise HTTPException(status_code=404, detail="YouTube link not found.")
+    _process_link_transcript(db, link)
+    db.refresh(link)
     return link
 
 

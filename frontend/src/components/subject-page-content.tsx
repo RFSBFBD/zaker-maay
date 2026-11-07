@@ -100,14 +100,8 @@ const WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   role: "assistant",
   content:
-    "مرحبًا بك! أنا رفيقك ومساعدك الذكي في «ذاكر معي».\nأشرح لك كافة مفاهيم المادة من مراجعك وكتبك المرفوعة فقط، ويمكنك أيضاً طلب رسم توضيحي ذكي لأي مفهوم بصرياً!",
+    "مرحبًا بك! أنا رفيقك ومساعدك الذكي في «ذاكر معي». 📚\nأنا هنا لأشرح لك مفاهيم المادة، وألخص الدروس، وأجيب عن كل أسئلتك استناداً إلى كتبك ومراجعك وشروحات الفيديو المرفوعة للمادة.\n\nتفضل بطرح أي سؤال وسأجيبك بدقة خطوة بخطوة!",
 };
-
-const QUICK_PROMPTS = [
-  "ما هي أهم المحاور والنقاط الرئيسية في المادة؟",
-  "اشرح لي فكرة المادة بأسلوب مبسط خطوة بخطوة",
-  "اختبرني بسؤال سريع لتأكيد فهمي للدرس",
-];
 
 let localMessageSequence = 0;
 
@@ -788,54 +782,40 @@ function FullScreenChat({
           padding: "12px 20px 16px",
         }}
       >
-        {/* Suggestion Chips */}
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            overflowX: "auto",
-            paddingBottom: 10,
-            scrollbarWidth: "none",
-          }}
-          aria-label="اقتراحات سريعة"
-        >
-          <button
-            type="button"
-            onClick={() => void handleSend("ارسم لي مخططًا توضيحيًا يشرح أهم فكرة في هذا الدرس")}
-            disabled={sending}
-            className="btn btn-ghost btn-sm"
+        {/* Dynamic Follow-up Suggestions (Derived only from student's conversation) */}
+        {suggestedReplies.length > 0 && (
+          <div
             style={{
-              borderRadius: 20,
-              border: "1px solid var(--green)",
-              background: "var(--mint)",
-              color: "var(--green)",
-              fontSize: 12.5,
-              fontWeight: 700,
-              flexShrink: 0,
+              display: "flex",
+              gap: 8,
+              overflowX: "auto",
+              paddingBottom: 10,
+              scrollbarWidth: "none",
             }}
+            aria-label="اقتراحات المتابعة"
           >
-            <span>🎨 ارسم مخططاً توضيحياً</span>
-          </button>
-          {(suggestedReplies.length > 0 ? suggestedReplies : QUICK_PROMPTS).map((prompt, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => void handleSend(prompt)}
-              disabled={sending}
-              className="btn btn-ghost btn-sm"
-              style={{
-                borderRadius: 20,
-                border: "1px solid var(--line)",
-                background: "var(--surface-raised)",
-                fontSize: 12.5,
-                fontWeight: 600,
-              }}
-            >
-              <LightbulbIcon size={13} style={{ color: "var(--green)" }} />
-              <span>{prompt}</span>
-            </button>
-          ))}
-        </div>
+            {suggestedReplies.map((prompt, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => void handleSend(prompt)}
+                disabled={sending}
+                className="btn btn-ghost btn-sm"
+                style={{
+                  borderRadius: 20,
+                  border: "1px solid var(--line)",
+                  background: "var(--surface-raised)",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <LightbulbIcon size={13} style={{ color: "var(--green)" }} />
+                <span>{prompt}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Input Form */}
         <form onSubmit={handleSubmit} style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>

@@ -79,3 +79,69 @@ def test_audio_transcription_uses_explicit_input_and_structured_language(monkeyp
     assert captured["contents"][1].inline_data.mime_type == "audio/wav"
     assert captured["config"].response_mime_type == "application/json"
     assert captured["closed"] is True
+
+
+def test_generate_concept_illustration_imagen(monkeypatch) -> None:
+    from app.services.ai_router import ResolvedAIConfig
+
+    class FakeImage:
+        image_bytes = b"fake-jpeg-bytes"
+
+    class FakeGeneratedImage:
+        image = FakeImage()
+
+    class FakeModels:
+        def generate_images(self, *, model, prompt, config):
+            assert "imagen" in model
+            assert config.output_mime_type == "image/jpeg"
+            return SimpleNamespace(generated_images=[FakeGeneratedImage()])
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.models = FakeModels()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(gemini, "genai", SimpleNamespace(Client=FakeClient))
+    cfg = ResolvedAIConfig(
+        task_type="image_generation",
+        model_name="imagen-3.0-generate-002",
+        api_key="test-key",
+        temperature=0.0,
+        max_output_tokens=1024,
+    )
+    result = gemini.generate_concept_illustration("القلب", _ai_config=cfg)
+    assert result["type"] == "image"
+    assert result["image_url"].startswith("data:image/jpeg;base64,")
+
+
+def test_generate_concept_illustration_gemini_multimodal(monkeypatch) -> None:
+    from app.services.ai_router import ResolvedAIConfig
+
+    class FakePart:
+        inline_data = SimpleNamespace(data=b"fake-gemini-image-bytes", mime_type="image/jpeg")
+
+    class FakeModels:
+        def generate_content(self, *, model, contents, config):
+            assert config.response_modalities == ["IMAGE"]
+            return SimpleNamespace(parts=[FakePart()], candidates=None)
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.models = FakeModels()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(gemini, "genai", SimpleNamespace(Client=FakeClient))
+    cfg = ResolvedAIConfig(
+        task_type="image_generation",
+        model_name="gemini-3.1-flash-image",
+        api_key="test-key",
+        temperature=0.0,
+        max_output_tokens=1024,
+    )
+    result = gemini.generate_concept_illustration("الخلية العصبية", _ai_config=cfg)
+    assert result["type"] == "image"
+    assert result["image_url"].startswith("data:image/jpeg;base64,")

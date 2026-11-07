@@ -387,6 +387,73 @@ def get_resource_transcript(
     )
 
 
+@router.post("/{resource_id}/transcribe", response_model=ResourceResponse)
+def trigger_resource_transcription(
+    subject_id: UUID,
+    resource_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Resource:
+    """Manually transcribe an uploaded audio lecture so the AI Agent can read, search, and reference it."""
+    _accessible_subject(db, subject_id, profile)
+    resource = db.scalar(select(Resource).where(Resource.id == resource_id, Resource.subject_id == subject_id))
+    if resource is None:
+        raise HTTPException(status_code=404, detail="الملف غير موجود.")
+
+    _, extension = _safe_filename(resource.file_name)
+    if extension not in TRANSCRIBABLE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="هذا الملف ليس تسجيلاً صوتياً قابلاً للتفريغ.")
+
+    resource_type = ALLOWED_TYPES[extension][1]
+    try:
+        try:
+            content, mime_type = _fetch_file_from_cloudinary(resource.cloudinary_public_id, resource_type, resource.secure_url)
+        except TypeError:
+            content, mime_type = _fetch_file_from_cloudinary(resource.cloudinary_public_id, resource_type)
+    except Exception as exc:
+        logger.exception("Failed to fetch audio for transcription: %s", exc)
+        raise HTTPException(status_code=502, detail="تعذر تنزيل الملف الصوتي من السحابة.") from None
+
+    try:
+        duration = inspect_audio(content, extension)
+    except InvalidAudio as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    try:
+        transcript = safe_call_ai(gemini.transcribe_audio, content, mime_type, db=db)
+    except gemini.GeminiNotConfigured:
+        raise HTTPException(status_code=503, detail="خدمة التفريغ الصوتي بالذكاء الاصطناعي غير مهيأة.") from None
+    except gemini.GeminiRateLimited:
+        raise HTTPException(status_code=429, detail="وصلت خدمة التفريغ الصوتي إلى حد الطلبات مؤقتاً. حاول لاحقاً.") from None
+    except Exception as exc:
+        logger.exception("Audio transcription failed for %s: %s", resource.file_name, exc)
+        raise HTTPException(status_code=502, detail="تعذر معالجة وتفريغ الملف الصوتي حالياً.") from None
+
+    if not transcript or not transcript.transcript.strip():
+        raise HTTPException(status_code=502, detail="لم يتم استخراج أي نص مسموع من التسجيل الصوتي.")
+
+    processed = process_document(
+        f"{PurePosixPath(resource.file_name).stem}.txt",
+        transcript.transcript.encode("utf-8"),
+    )
+
+    resource.transcript_text = transcript.transcript.strip()
+    resource.transcript_language = transcript.language.strip()
+    resource.transcription_model = get_settings().gemini_model
+    resource.audio_duration_seconds = duration
+    resource.processing_status = processed.status
+
+    from sqlalchemy import delete
+    db.execute(delete(ResourceChunk).where(ResourceChunk.resource_id == resource.id))
+    db.add_all(
+        ResourceChunk(resource_id=resource.id, chunk_index=index, page_number=page, content=text)
+        for index, (page, text) in enumerate(processed.chunks)
+    )
+    db.commit()
+    db.refresh(resource)
+    return resource
+
+
 @router.get("/{resource_id}/download", response_model=DownloadResponse)
 def get_download_url(
     subject_id: UUID,

@@ -89,6 +89,7 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
   const [videoBusy, setVideoBusy] = useState(false);
   const [transcribeAudio, setTranscribeAudio] = useState(false);
   const [transcripts, setTranscripts] = useState<Record<string, ResourceTranscript>>({});
+  const [transcribingId, setTranscribingId] = useState<string | null>(null);
 
   const getHeaders = useCallback(async () => {
     const {
@@ -134,38 +135,43 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
     const file = input?.files?.[0];
     if (!file) return;
 
+    if (file.size > 20 * 1024 * 1024) {
+      setError("حجم الملف يتجاوز الحد الأقصى المسموح به (20 ميغابايت).");
+      return;
+    }
+
     setUploading(true);
     setError(null);
     setNotice(null);
 
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
       const headers = await getHeaders();
-      // 1. Get signed upload params
+      // 1. Get signed upload params from backend
       const params = await apiRequest<Record<string, string>>(
         `/api/v1/subjects/${subjectId}/resources/upload-params?file_name=${encodeURIComponent(file.name)}&resource_type=${file.type.startsWith("audio/") ? "video" : "raw"}`,
         { headers }
       );
 
-      // 2. Upload directly to Cloudinary
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("api_key", params.api_key);
-      formData.append("timestamp", params.timestamp);
-      formData.append("signature", params.signature);
-      formData.append("public_id", params.public_id);
-      formData.append("resource_type", params.resource_type);
+      // 2. Upload directly from browser to Cloudinary (bypassing Vercel 4.5MB serverless limit)
+      const cloudFormData = new FormData();
+      cloudFormData.append("file", file);
+      cloudFormData.append("api_key", params.api_key);
+      cloudFormData.append("timestamp", params.timestamp);
+      cloudFormData.append("signature", params.signature);
+      cloudFormData.append("public_id", params.public_id);
+      cloudFormData.append("resource_type", params.resource_type);
 
       const cloudinaryResp = await fetch(
         `https://api.cloudinary.com/v1_1/${params.cloud_name}/${params.resource_type}/upload`,
-        { method: "POST", body: formData }
+        { method: "POST", body: cloudFormData }
       );
-      if (!cloudinaryResp.ok) throw new Error("تعذر الرفع للسحابة.");
+      if (!cloudinaryResp.ok) {
+        const errJson = await cloudinaryResp.json().catch(() => null);
+        throw new Error(errJson?.error?.message || "تعذر رفع الملف إلى التخزين السحابي.");
+      }
       const cloudinaryData = await cloudinaryResp.json();
 
-      // 3. Post metadata to our backend
+      // 3. Post only metadata to backend
       const metaForm = new FormData();
       metaForm.append("cloudinary_public_id", cloudinaryData.public_id);
       metaForm.append("cloudinary_secure_url", cloudinaryData.secure_url);
@@ -216,6 +222,26 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
       setTranscripts((current) => ({ ...current, [resourceId]: data }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر تحميل تفريغ الصوت.");
+    }
+  }
+
+  async function triggerTranscribe(resourceId: string) {
+    setTranscribingId(resourceId);
+    setError(null);
+    setNotice(null);
+    try {
+      const headers = await getHeaders();
+      const updated = await apiRequest<Resource>(
+        `/api/v1/subjects/${subjectId}/resources/${resourceId}/transcribe`,
+        { method: "POST", headers }
+      );
+      setResources((prev) => prev.map((r) => (r.id === resourceId ? updated : r)));
+      setNotice("تم تفريغ المحاضرة الصوتية بنجاح وأصبحت مرجعاً معتمداً للوكيل الذكي! 🎙️");
+      await loadTranscript(resourceId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر تفريغ الملف الصوتي حالياً.");
+    } finally {
+      setTranscribingId(null);
     }
   }
 
@@ -287,6 +313,15 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
             accept=".pdf,.txt,.docx,.mp3,.wav,.m4a,.webm"
             required
             disabled={uploading}
+            onChange={(e) => {
+              const selected = e.target.files?.[0];
+              if (selected) {
+                const isAudio = selected.type.startsWith("audio/") || /\.(mp3|wav|m4a|webm)$/i.test(selected.name);
+                if (isAudio) {
+                  setTranscribeAudio(true);
+                }
+              }
+            }}
           />
           <button className="session-start" type="submit" disabled={uploading}>
             {uploading ? "⏳ جارٍ الرفع والمعالجة…" : "⬆️ رفع إلى مكتبة المادة"}
@@ -333,13 +368,24 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
                     {formatSize(resource.size_bytes)} · {new Date(resource.created_at).toLocaleDateString("ar-EG")} ·{" "}
                     <span style={{ fontWeight: 600 }}>
                       {resource.mime_type.startsWith("audio/") && !resource.has_transcript
-                        ? "ملف صوتي محفوظ"
+                        ? "🎙️ تسجيل صوتي (غير مفرغ بعد)"
                         : processingLabel(resource.processing_status)}
                     </span>
                     {resource.transcript_language ? ` · لغة التفريغ: ${resource.transcript_language}` : ""}
                   </p>
                 </div>
                 <div className="resource-actions">
+                  {resource.mime_type.startsWith("audio/") && !resource.has_transcript && (
+                    <button
+                      className="text-button"
+                      type="button"
+                      disabled={transcribingId === resource.id}
+                      onClick={() => void triggerTranscribe(resource.id)}
+                      style={{ color: "var(--green)", fontWeight: 700 }}
+                    >
+                      {transcribingId === resource.id ? "⏳ جارٍ التفريغ النصي..." : "🎙️ تفريغ المحاضرة ليذاكر منها المساعد"}
+                    </button>
+                  )}
                   {resource.has_transcript && (
                     <button
                       className="text-button"

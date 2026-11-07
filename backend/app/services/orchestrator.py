@@ -20,31 +20,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import AIModelConfig, OrchestratorDecision
-from app.services.ai_router import ResolvedAIConfig, resolve_ai_config
+from app.services.ai_router import ResolvedAIConfig, resolve_ai_config, classify_agent_intent
 
 logger = logging.getLogger(__name__)
-
-
-# ── Intent classification keywords ──────────────────────────────────────────
-
-_IMAGE_KEYWORDS = [
-    "ارسم", "رسم", "صورة", "img", "diagram", "schema",
-    "Show me", "draw", "image", "Illustration", "Concept",
-]
-
-_QUIZ_KEYWORDS = [
-    "اختبر", "اختبار", "quiz", "question", "أسئلة",
-    "امتحان", "مراجعة", "test me",
-]
-
-_FLASHCARD_KEYWORDS = [
-    "بطاقات", "flashcard", "مذكرات سريعة", "استذكار",
-]
-
-_CHAT_KEYWORDS = [
-    "اشرح", "وضح", "ما هو", "لماذا", "كيف",
-    "explain", "what is", "why", "how",
-]
 
 
 # ── Plan step dataclasses ────────────────────────────────────────────────────
@@ -72,26 +50,8 @@ class OrchestratorResult:
 # ── Intent classifier ────────────────────────────────────────────────────────
 
 def classify_intent(message: str) -> list[str]:
-    """Classify user message into one or more task types.
-
-    Always includes 'chat_qa' as a base intent; additional intents are layered
-    on top when the message signals them.
-    """
-    msg_lower = message.strip().lower()
-    intents: list[str] = ["chat_qa"]
-    for kw in _IMAGE_KEYWORDS:
-        if kw.lower() in msg_lower and "image_generation" not in intents:
-            intents.append("image_generation")
-            break
-    for kw in _QUIZ_KEYWORDS:
-        if kw.lower() in msg_lower and "quiz_generation" not in intents:
-            intents.append("quiz_generation")
-            break
-    for kw in _FLASHCARD_KEYWORDS:
-        if kw.lower() in msg_lower and "flashcards" not in intents:
-            intents.append("flashcards")
-            break
-    return intents
+    """Classify user message into one or more task types using intelligent agent classification."""
+    return classify_agent_intent(message)
 
 
 def build_plan(intents: list[str], **kwargs: Any) -> list[PlanStep]:
@@ -105,6 +65,7 @@ def build_plan(intents: list[str], **kwargs: Any) -> list[PlanStep]:
                 kwargs={
                     "question": kwargs.get("message", ""),
                     "passages": kwargs.get("passages", []),
+                    "system_prompt": kwargs.get("system_prompt"),
                 },
             ))
         elif intent == "image_generation":
@@ -113,6 +74,7 @@ def build_plan(intents: list[str], **kwargs: Any) -> list[PlanStep]:
                 description="Generate educational illustration",
                 kwargs={
                     "prompt": kwargs.get("message", ""),
+                    "context": kwargs.get("context", ""),
                 },
             ))
         elif intent == "quiz_generation":
@@ -245,10 +207,18 @@ def orchestrate_chat(
     subject_id: UUID,
     db: Session,
     passages: list | None = None,
+    system_prompt: str | None = None,
+    context: str | None = None,
 ) -> OrchestratorResult:
     """Orchestrate a chat request: classify intent, build plan, execute steps."""
     intents = classify_intent(message)
-    plan = build_plan(intents, message=message, passages=passages or [])
+    plan = build_plan(
+        intents,
+        message=message,
+        passages=passages or [],
+        system_prompt=system_prompt,
+        context=context or "",
+    )
 
     plan_json = json.dumps([
         {"task_type": s.task_type, "description": s.description}
@@ -280,10 +250,14 @@ def orchestrate_chat(
         if step_result["success"]:
             results[step.task_type] = step_result["result"]
         else:
-            logger.error("[orchestrator] Critical step failed: %s", step.task_type)
+            logger.error("[orchestrator] Step failed: %s", step.task_type)
 
     total_elapsed = time.time() - start_time
-    overall_success = all(s["success"] for s in plan_log)
+    # If chat_qa succeeded, the user gets their logical answer even if image generation had an issue
+    if "chat_qa" in [s.task_type for s in plan]:
+        overall_success = "chat_qa" in results
+    else:
+        overall_success = any(s["success"] for s in plan_log) if plan_log else True
 
     _log_decision(db, subject_id, "chat", plan_json, results, plan_log, overall_success)
 

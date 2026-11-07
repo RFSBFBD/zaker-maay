@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -15,6 +16,65 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+# ── Agent Intent Regex Patterns ──────────────────────────────────────────────
+
+_IMAGE_ACTION_PATTERNS = [
+    r"\b(و|ف)?(ارسم|ارسم\s*(لي|لنا|ليا|لى))\b",
+    r"\b(انشئ|أنشئ|ولد|توليد|صمم|اعمل|اصنع)(\s*(لي|لنا|ليا|لى))?\s+(صورة|صوره|رسمة|رسمه|مخطط|رسم\s+بياني|دياجرام)\b",
+    r"\b(عايز|اريد|أريد|محتاج)(\s*(لي|لنا|ليا|لى))?\s+(صورة|صوره|رسمة|رسمه|مخطط|رسم\s+توضيحي)\b",
+    r"\b(مخطط\s+بياني|رسم\s+توضيحي\s+لـ|رسمة\s+لـ|صورة\s+لـ)\b",
+    r"\b(draw|sketch|illustrate)\b",
+    r"\b(generate|create|make|produce)\s+(an?\s+)?(image|picture|diagram|illustration|visual)\b",
+    r"\b(diagram\s+of|schema\s+of|visualize|infographic)\b",
+    r"\b(diagram|image)\b",
+]
+
+_QUIZ_ACTION_PATTERNS = [
+    r"\b(و|ف)?(اختبر|اختبرني|اختبرنا|امتحني|امتحان|كويز|كويزات|أسئلة|اسئلة)\b",
+    r"\b(quiz|test\s+me|give\s+me\s+a\s+test|exam)\b",
+]
+
+_FLASHCARD_ACTION_PATTERNS = [
+    r"\b(بطاقات|بطاقة|فلاش\s*كارد|فلاش\s*كاردز|كروت\s+استذكار|مذكرات\s+سريعة)\b",
+    r"\b(flashcards?|flash-cards?|study\s+cards?)\b",
+]
+
+
+def classify_agent_intent(message: str) -> list[str]:
+    """Agentic intent classification that understands semantics and avoids false positives.
+    
+    Prevents misrouting of normal inquiries that contain words like:
+    'بشكل عام', 'بشكل لوجيك', 'مثال توضيحي', 'صورة عامة', 'هل الرسم مقرر؟'.
+    """
+    msg_clean = message.strip()
+    msg_lower = msg_clean.lower()
+    if not msg_clean:
+        return ["chat_qa"]
+
+    intents: list[str] = ["chat_qa"]
+
+    # 1. Image / Diagram intent
+    wants_img = False
+    if msg_lower in ("draw", "رسم", "ارسم", "image", "diagram"):
+        wants_img = True
+    elif any(re.search(pat, msg_lower, re.IGNORECASE) for pat in _IMAGE_ACTION_PATTERNS):
+        wants_img = True
+
+    if wants_img and "image_generation" not in intents:
+        intents.append("image_generation")
+
+    # 2. Quiz intent
+    wants_quiz = any(re.search(pat, msg_lower, re.IGNORECASE) for pat in _QUIZ_ACTION_PATTERNS)
+    if wants_quiz and "quiz_generation" not in intents:
+        intents.append("quiz_generation")
+
+    # 3. Flashcard intent
+    wants_flashcard = any(re.search(pat, msg_lower, re.IGNORECASE) for pat in _FLASHCARD_ACTION_PATTERNS)
+    if wants_flashcard and "flashcards" not in intents:
+        intents.append("flashcards")
+
+    return intents
 
 SUPPORTED_TASK_TYPES = {
     "chat_qa": "أسئلة ومساعد المذاكرة الموثق",
