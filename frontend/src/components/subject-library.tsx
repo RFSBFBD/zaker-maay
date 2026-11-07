@@ -135,8 +135,8 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
     const file = input?.files?.[0];
     if (!file) return;
 
-    if (file.size > 20 * 1024 * 1024) {
-      setError("حجم الملف يتجاوز الحد الأقصى المسموح به (20 ميغابايت).");
+    if (file.size > 100 * 1024 * 1024) {
+      setError("حجم الملف يتجاوز الحد الأقصى المسموح به (100 ميغابايت).");
       return;
     }
 

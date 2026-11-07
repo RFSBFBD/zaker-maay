@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import time
 
 from google import genai
@@ -337,18 +339,44 @@ def transcribe_audio(
     if not ai_cfg.api_key:
         raise GeminiNotConfigured
     client = None
+    uploaded_file = None
     try:
         client = genai.Client(
             api_key=ai_cfg.api_key,
-            http_options=types.HttpOptions(timeout=25_000),
+            http_options=types.HttpOptions(timeout=90_000),
         )
+        if len(content) > 15 * 1024 * 1024:
+            suffix = ".mp3"
+            if "m4a" in mime_type or "mp4" in mime_type:
+                suffix = ".m4a"
+            elif "wav" in mime_type:
+                suffix = ".wav"
+            elif "ogg" in mime_type:
+                suffix = ".ogg"
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tf:
+                tf.write(content)
+                tf_path = tf.name
+            try:
+                uploaded_file = client.files.upload(
+                    file=tf_path,
+                    config=types.UploadFileConfig(mime_type=mime_type),
+                )
+                audio_input = uploaded_file
+            finally:
+                try:
+                    os.unlink(tf_path)
+                except OSError:
+                    pass
+        else:
+            audio_input = types.Part.from_bytes(data=content, mime_type=mime_type)
+
         response = client.models.generate_content(
             model=ai_cfg.model_name,
             contents=[
                 "Transcribe the spoken audio verbatim in its original language. Do not summarize, translate, "
                 "infer inaudible words, add commentary, or include timestamps. Return the detected language "
                 "and the transcript only in the requested schema.",
-                types.Part.from_bytes(data=content, mime_type=mime_type),
+                audio_input,
             ],
             config=types.GenerateContentConfig(
                 system_instruction=(
@@ -375,9 +403,14 @@ def transcribe_audio(
     except Exception as exc:
         if getattr(exc, "code", None) == 429:
             raise GeminiRateLimited from None
-        logger.warning("Gemini audio transcription failed.")
+        logger.warning("Gemini audio transcription failed: %s", exc)
         raise GeminiRequestFailed from None
     finally:
+        if uploaded_file is not None and client is not None:
+            try:
+                client.files.delete(name=uploaded_file.name)
+            except Exception:
+                pass
         if client is not None:
             client.close()
 

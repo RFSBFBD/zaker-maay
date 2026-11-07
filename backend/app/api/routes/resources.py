@@ -31,7 +31,7 @@ from app.services.document_processing import process_document
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/subjects/{subject_id}/resources", tags=["resources"])
 
-MAX_FILE_BYTES = 20 * 1024 * 1024
+MAX_FILE_BYTES = 100 * 1024 * 1024
 ALLOWED_TYPES: dict[str, tuple[str, str]] = {
     ".pdf": ("application/pdf", "raw"),
     ".txt": ("text/plain", "raw"),
@@ -222,7 +222,7 @@ def _fetch_file_from_cloudinary(public_id: str, resource_type: str, secure_url: 
                 tmp.write(chunk)
                 content += chunk
                 if len(content) > MAX_FILE_BYTES + 1:
-                    raise HTTPException(status_code=413, detail="File exceeds the 20 MiB limit.")
+                    raise HTTPException(status_code=413, detail="File exceeds the 100 MiB limit.")
         tmp.seek(0)
         headers = dict(resp.headers)
         mime_type = headers.get("content-type", "application/octet-stream").split(";")[0]
@@ -262,7 +262,7 @@ def upload_resource(
         raise HTTPException(status_code=502, detail="تعذر تنزيل الملف المرفوع للمعالجة.") from None
 
     if len(content) > MAX_FILE_BYTES:
-        raise HTTPException(status_code=413, detail="File exceeds the 20 MiB limit.")
+        raise HTTPException(status_code=413, detail="File exceeds the 100 MiB limit.")
     if not content:
         raise HTTPException(status_code=422, detail="Empty files are not supported.")
     mime_type = _validate_content(content, extension)

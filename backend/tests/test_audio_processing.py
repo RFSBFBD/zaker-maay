@@ -39,10 +39,11 @@ def test_inspect_audio_rejects_duration_over_limit(monkeypatch: pytest.MonkeyPat
         "get",
         lambda **kwargs: SimpleNamespace(duration=audio_processing.MAX_AUDIO_DURATION_SECONDS + 1),
     )
-    with pytest.raises(InvalidAudio, match="limited to 30 minutes"):
+    with pytest.raises(InvalidAudio, match="limited to 180 minutes"):
         audio_processing.inspect_audio(b"audio", ".mp3")
 
 
-def test_inspect_audio_rejects_oversized_input() -> None:
-    with pytest.raises(InvalidAudio, match="18 MiB"):
-        audio_processing.inspect_audio(b"x" * (audio_processing.MAX_TRANSCRIPTION_BYTES + 1), ".wav")
+def test_inspect_audio_rejects_oversized_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(audio_processing, "MAX_TRANSCRIPTION_BYTES", 10)
+    with pytest.raises(InvalidAudio, match="100 MiB"):
+        audio_processing.inspect_audio(b"x" * 11, ".wav")
