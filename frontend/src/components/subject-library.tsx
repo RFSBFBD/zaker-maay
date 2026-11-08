@@ -158,67 +158,26 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
       if (useGeminiDirect) {
         setNotice(
           isAudio
-            ? "جارٍ رفع التسجيل الصوتي مباشرة إلى المساعد الذكي دون استهلاك مساحة…"
-            : "جارٍ رفع الملف الكبير مباشرة إلى المساعد الذكي للمعالجة والفهرسة…"
-        );
-        let mime = file.type;
-        if (!mime) {
-          if (/\.(mp3)$/i.test(file.name)) mime = "audio/mpeg";
-          else if (/\.(wav)$/i.test(file.name)) mime = "audio/wav";
-          else if (/\.(m4a)$/i.test(file.name)) mime = "audio/mp4";
-          else if (/\.(webm)$/i.test(file.name)) mime = "audio/webm";
-          else if (/\.(ogg)$/i.test(file.name)) mime = "audio/ogg";
-          else if (/\.(aac)$/i.test(file.name)) mime = "audio/aac";
-          else if (/\.(flac)$/i.test(file.name)) mime = "audio/flac";
-          else if (/\.(mp4)$/i.test(file.name)) mime = "audio/mp4";
-          else if (/\.(pdf)$/i.test(file.name)) mime = "application/pdf";
-          else if (/\.(docx)$/i.test(file.name)) mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-          else mime = "application/octet-stream";
-        }
-
-        const { upload_url } = await apiRequest<{ upload_url: string }>(
-          `/api/v1/subjects/${subjectId}/resources/gemini-upload-url?file_name=${encodeURIComponent(file.name)}&file_size=${file.size}&mime_type=${encodeURIComponent(mime)}`,
-          { method: "POST", headers }
+            ? "جارٍ رفع التسجيل الصوتي والتفريغ النصي الذكي عبر الخادم مباشرة…"
+            : "جارٍ رفع ومعالجة الملف الكبير واستخراج المحتوى العلمي وفهرسته…"
         );
 
-        const uploadResp = await fetch(upload_url, {
-          method: "POST",
-          headers: {
-            "Content-Length": file.size.toString(),
-            "X-Goog-Upload-Offset": "0",
-            "X-Goog-Upload-Command": "upload, finalize",
-          },
-          body: file,
-        });
+        const formData = new FormData();
+        formData.append("file", file);
 
-        if (!uploadResp.ok) {
-          throw new Error("تعذر إرسال الملف إلى خدمة المساعد الذكي.");
+        const directHeaders: Record<string, string> = {};
+        if (headers.Authorization) {
+          directHeaders.Authorization = headers.Authorization;
         }
-        const uploadData = await uploadResp.json();
-        const geminiFileName = uploadData?.file?.name;
-        if (!geminiFileName) {
-          throw new Error("تعذر إكمال رفع الملف إلى خدمة الذكاء الاصطناعي.");
-        }
-
-        setNotice(
-          isAudio
-            ? "تم رفع الصوت بنجاح! جارٍ الآن التفريغ النصي الذكي وإضافته كمرجع دراسي…"
-            : "تم رفع الملف بنجاح! جارٍ الآن استخراج المحتوى العلمي وفهرسته…"
-        );
 
         const created = await apiRequest<Resource>(
-          `/api/v1/subjects/${subjectId}/resources/process-audio-transcript`,
+          `/api/v1/subjects/${subjectId}/resources/upload-direct`,
           {
             method: "POST",
-            headers: { ...headers, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              gemini_file_name: geminiFileName,
-              file_name: file.name,
-              size_bytes: file.size,
-              mime_type: mime,
-            }),
+            headers: directHeaders,
+            body: formData,
           },
-          120_000
+          180_000
         );
 
         setResources((current) => [created, ...current]);

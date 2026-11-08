@@ -16,7 +16,7 @@ class UploadBodyLimitMiddleware:
 
     async def __call__(self, scope: dict[str, Any], receive: Callable[..., Awaitable[dict[str, Any]]], send: Callable[..., Awaitable[None]]) -> None:
         path = scope.get("path", "")
-        if scope.get("type") != "http" or scope.get("method") != "POST" or not path.endswith("/resources"):
+        if scope.get("type") != "http" or scope.get("method") != "POST" or ("/resources" not in path):
             await self.app(scope, receive, send)
             return
 

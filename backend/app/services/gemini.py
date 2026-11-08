@@ -190,6 +190,26 @@ def generate_grounded_answer(
         raise
     except Exception as exc:
         if getattr(exc, "code", None) == 429:
+            fallback_models = ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash"]
+            for fb_model in fallback_models:
+                if fb_model == ai_cfg.model_name or client is None:
+                    continue
+                try:
+                    time.sleep(1.2)
+                    fb_resp = client.models.generate_content(
+                        model=fb_model,
+                        contents=f"Question:\n{question}\n\nSource excerpts:\n{sources}",
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            temperature=ai_cfg.temperature,
+                            max_output_tokens=max(ai_cfg.max_output_tokens, 2048),
+                            thinking_config=types.ThinkingConfig(thinking_level="minimal"),
+                        ),
+                    )
+                    if fb_resp.text and fb_resp.text.strip():
+                        return fb_resp.text.strip()
+                except Exception:
+                    continue
             raise GeminiRateLimited from None
         logger.warning("Gemini generation request failed.")
         raise GeminiRequestFailed from None
@@ -758,6 +778,127 @@ def generate_follow_up_suggestions(
             client.close()
 
 
+def _analyze_visual_domain_and_palette(prompt: str, context: str) -> dict[str, Any]:
+    """Analyze the domain and construct a semantic, scalable color palette and layout strategy."""
+    combined = f"{prompt} {context}".lower()
+
+    prog_keywords = [
+        "code", "برمج", "class", "كلاس", "object", "دالة", "function", "oop", "pointer", "مؤشر",
+        "ذاكر", "memory", "stack", "heap", "constructor", "منشئ", "array", "مصفوفة", "c++",
+        "python", "java", "sql", "خوارزم", "algorithm", "variable", "متغير", "loop", "حلقة",
+    ]
+    net_keywords = [
+        "شبك", "network", "router", "راوتر", "switch", "سويتش", "ip", "tcp", "udp", "osi",
+        "packet", "باكت", "بروتوكول", "protocol", "dns", "http", "port", "منفذ", "firewall", "حماي",
+        "security", "أمن", "server", "خادم", "client", "عميل", "handshake", "تشفير", "encryption",
+    ]
+    math_keywords = [
+        "رياضيات", "math", "معادل", "equation", "تكامل", "integral", "اشتقاق", "derivative",
+        "matrix", "مصفوف", "احتمال", "probability", "إحصاء", "statistics", "vector", "متجه",
+        "ai", "ذكاء", "نموذج", "loss", "gradient", "دوال", "geometric", "هندسة",
+    ]
+    bio_keywords = [
+        "أحياء", "biology", "خلي", "cell", "dna", "جين", "gene", "طب", "medicine", "عضو", "organ",
+        "كيمياء", "chemistry", "فيزياء", "physics", "طاق", "energy", "ذرة", "atom", "تفاعل", "reaction",
+    ]
+
+    if any(k in combined for k in prog_keywords):
+        return {
+            "domain": "programming",
+            "domain_label": "هندسة البرمجيات وتراكيب البيانات",
+            "palette_name": "Tech Indigo, Purple & Amber",
+            "colors": {
+                "bg": "#0a0f1d",
+                "card_bg": "#151e34",
+                "card_border": "#223154",
+                "primary": "#38bdf8",     # Sky Blue: Classes, Blueprints, Architecture
+                "secondary": "#a855f7",   # Purple: Memory, Objects, Instances
+                "accent": "#f59e0b",      # Amber: Pointers, Transitions, Execution Flow
+                "success": "#10b981",     # Emerald: Target Output, Return Value
+                "warning": "#f43f5e",     # Rose: Memory Leak, Null Pointer, Anti-pattern
+                "text_primary": "#f8fafc",
+                "text_muted": "#94a3b8",
+            },
+            "layout_advice": "قارن بين الكلاس (Blueprint) والكائن في الذاكرة (Memory Heap)، أو مسار تنفيذ الدالة بالتتابع مع أمثلة الكود والنتيجة.",
+        }
+    elif any(k in combined for k in net_keywords):
+        return {
+            "domain": "networking",
+            "domain_label": "الشبكات والاتصالات السيبرانية",
+            "palette_name": "Cyber Cobalt, Violet & Coral",
+            "colors": {
+                "bg": "#061325",
+                "card_bg": "#0e2240",
+                "card_border": "#1d3d6e",
+                "primary": "#0284c7",     # Cobalt: Transports, Endpoints, Host
+                "secondary": "#7c3aed",   # Violet: Protocols, TLS Handshake
+                "accent": "#f97316",      # Orange: Routing Hops, Switches, NAT
+                "success": "#059669",     # Emerald: Packet Delivered, Verified
+                "warning": "#e11d48",     # Rose: Dropped Packet, Firewall Block
+                "text_primary": "#f0f9ff",
+                "text_muted": "#7dd3fc",
+            },
+            "layout_advice": "مخطط مسار الحزم (Packet Flow) أو طبقات الشبكة مع توضيح مراحل المصافحة (Handshake) وسيناريو الخطأ/الحجب.",
+        }
+    elif any(k in combined for k in math_keywords):
+        return {
+            "domain": "mathematics_ai",
+            "domain_label": "الرياضيات التطبيقية والذكاء الاصطناعي",
+            "palette_name": "Modern Indigo, Cyan & Gold",
+            "colors": {
+                "bg": "#0b0f19",
+                "card_bg": "#131b2e",
+                "card_border": "#243356",
+                "primary": "#6366f1",     # Indigo: Equations, Formulation
+                "secondary": "#06b6d4",   # Cyan: Functions, Geometric curves
+                "accent": "#eab308",      # Gold: Parameters, Weights
+                "success": "#22c55e",     # Emerald: Solution, Convergence
+                "warning": "#f43f5e",     # Rose: Loss, Error, Boundary limits
+                "text_primary": "#f8fafc",
+                "text_muted": "#94a3b8",
+            },
+            "layout_advice": "عرض المعادلة بوضوح، تليها بطاقات تفكيك المتغيرات، ثم مثال عددي تطبيقي، ونهاية بنتيجة الحل والتحذير من الحالات الخاصة.",
+        }
+    elif any(k in combined for k in bio_keywords):
+        return {
+            "domain": "science_biology",
+            "domain_label": "العلوم الحيوية والطبيعية",
+            "palette_name": "Bio Teal, Mint & Amber",
+            "colors": {
+                "bg": "#041510",
+                "card_bg": "#09261d",
+                "card_border": "#134e3a",
+                "primary": "#0d9488",     # Teal: Structural Unit, Cellular system
+                "secondary": "#10b981",   # Mint: Biological Cycle, Growth
+                "accent": "#f59e0b",      # Amber: Enzymes, Energy transfer
+                "success": "#059669",     # Green: Target Synthesis, Equilibrium
+                "warning": "#f43f5e",     # Rose: Inhibitors, Toxins, Mutations
+                "text_primary": "#ecfdf5",
+                "text_muted": "#6ee7b7",
+            },
+            "layout_advice": "مخطط دورة حيوية دائرية أو مراحل متسلسلة توضح المدخلات والإنزيمات والنتيجة النهائية مع التنبيه من العوامل المثبطة.",
+        }
+    else:
+        return {
+            "domain": "general_education",
+            "domain_label": "المفاهيم والعلوم العامة",
+            "palette_name": "Executive Royal Blue, Amber & Emerald",
+            "colors": {
+                "bg": "#0f172a",
+                "card_bg": "#1e293b",
+                "card_border": "#334155",
+                "primary": "#2563eb",     # Royal Blue: Core Concept Pillar
+                "secondary": "#8b5cf6",   # Violet: Supporting Concept
+                "accent": "#f59e0b",      # Amber: Practical Real-World Example
+                "success": "#10b981",     # Emerald: Best Practice / Output
+                "warning": "#ef4444",     # Rose: Common Misconception
+                "text_primary": "#f8fafc",
+                "text_muted": "#cbd5e1",
+            },
+            "layout_advice": "هيكلية بصرية ثلاثية: الفكرة الأساسية، ثم آلية العمل والأمثلة، ثم الخلاصة مع تجنب الأخطاء الشائعة.",
+        }
+
+
 def generate_concept_illustration(
     prompt: str,
     context: str = "",
@@ -765,10 +906,9 @@ def generate_concept_illustration(
     db: Session | None = None,
     _ai_config: ResolvedAIConfig | None = None,
 ) -> dict[str, str]:
-    """Generate an educational illustration or visual diagram for a concept.
+    """Generate a dynamic, semantic educational visual illustration or diagram.
 
-    Uses the configured image_generation / nano banana model if available,
-    or generates an SVG/visual concept diagram as an ultra-reliable educational graphic.
+    Features a scalable, domain-aware color vocabulary and intelligent visual layout.
     """
     if _ai_config is not None:
         ai_cfg = _ai_config
@@ -783,6 +923,12 @@ def generate_concept_illustration(
     if not ai_cfg.api_key:
         raise GeminiNotConfigured
 
+    domain_meta = _analyze_visual_domain_and_palette(prompt, context)
+    colors = domain_meta["colors"]
+    domain_label = domain_meta["domain_label"]
+    palette_name = domain_meta["palette_name"]
+    layout_advice = domain_meta["layout_advice"]
+
     client = None
     try:
         client = genai.Client(
@@ -792,12 +938,18 @@ def generate_concept_illustration(
 
         model_lower = (ai_cfg.model_name or "").lower()
 
-        # 1. Gemini Multimodal Image Generation (e.g. gemini-3.1-flash-image, gemini-3.1-flash-lite-image)
+        # 1. Gemini Multimodal Image Generation (e.g. gemini-3.1-flash-image)
         if "image" in model_lower and "imagen" not in model_lower:
             try:
+                enriched_image_prompt = (
+                    f"Professional educational visual infographic and concept illustration: {prompt}.\n"
+                    f"Domain: {domain_label}. Color harmony: {palette_name}.\n"
+                    "High-resolution vector-style diagram, clean typography, semantic visual hierarchy, "
+                    "showing core concepts, practical examples, and clear annotations on a sleek dark-slate studio background."
+                )
                 result = client.models.generate_content(
                     model=ai_cfg.model_name,
-                    contents=f"Educational visual illustration or diagram for: {prompt}. Clear academic infographic.",
+                    contents=enriched_image_prompt,
                     config=types.GenerateContentConfig(
                         response_modalities=["IMAGE"],
                     ),
@@ -813,7 +965,7 @@ def generate_concept_illustration(
                                 "type": "image",
                                 "image_url": f"data:{mime};base64,{b64}",
                                 "title": prompt,
-                                "description": f"رسم توضيحي مولد لـ: {prompt}",
+                                "description": f"رسم بياني تعليمي ذكي: {prompt}",
                             }
                 if hasattr(result, "candidates") and result.candidates:
                     for cand in result.candidates:
@@ -827,18 +979,24 @@ def generate_concept_illustration(
                                         "type": "image",
                                         "image_url": f"data:{mime};base64,{b64}",
                                         "title": prompt,
-                                        "description": f"رسم توضيحي مولد لـ: {prompt}",
+                                        "description": f"رسم بياني تعليمي ذكي: {prompt}",
                                     }
             except Exception as img_exc:
-                logger.warning("Gemini multimodal image generation failed: %s. Attempting fallback.", img_exc)
+                logger.warning("Gemini multimodal image generation failed: %s. Attempting fallback to Smart SVG.", img_exc)
 
-        # 2. Imagen model (e.g. imagen-3.0-generate-002, imagen-4.0-generate-001)
+        # 2. Imagen model (e.g. imagen-3.0-generate-002)
         if "imagen" in model_lower:
             try:
                 import base64
+                enriched_imagen_prompt = (
+                    f"Professional educational visual infographic: {prompt}. "
+                    f"Domain: {domain_label}. Vibrant {palette_name} palette. "
+                    "Clean minimalist layout, distinct structural modules, clear flowchart arrows, "
+                    "no cluttered text, high aesthetic standard."
+                )
                 result = client.models.generate_images(
                     model=ai_cfg.model_name,
-                    prompt=f"Educational visual diagram or illustration explaining: {prompt}. Clear, modern, academic, infographic style, white background.",
+                    prompt=enriched_imagen_prompt,
                     config=types.GenerateImagesConfig(
                         number_of_images=1,
                         output_mime_type="image/jpeg",
@@ -851,14 +1009,12 @@ def generate_concept_illustration(
                         "type": "image",
                         "image_url": f"data:image/jpeg;base64,{b64}",
                         "title": prompt,
-                        "description": f"رسم توضيحي مولد لـ: {prompt}",
+                        "description": f"رسم بياني تعليمي ذكي: {prompt}",
                     }
-                else:
-                    logger.warning("Imagen generation returned no images.")
             except Exception as img_exc:
-                logger.warning("Imagen generation failed: %s. Attempting fallback to SVG.", img_exc)
+                logger.warning("Imagen generation failed: %s. Attempting fallback to Smart SVG.", img_exc)
 
-        # Determine meaningful illustration topic
+        # Determine topic name
         topic = prompt.strip()
         generic_phrases = ["عايز اعمل صوره توضيحيه", "عايز صوره توضيحيه", "عايز صوره", "اعملي صوره", "رسم توضيحي", "صوره توضيحيه", "ارسم لي", "ارسم صوره"]
         if any(topic.lower() == g for g in generic_phrases) or (len(topic) < 25 and any(p in topic for p in ["صوره", "صورة", "رسم", "مخطط"])):
@@ -867,7 +1023,37 @@ def generate_concept_illustration(
             else:
                 topic = f"مخطط توضيحي للمادة ({prompt})"
 
-        # Generate a clear, styled SVG educational diagram
+        # 3. Dynamic Semantic SVG Generator
+        svg_designer_prompt = (
+            f"You are an Elite Educational Visual Designer. Generate an exceptional, modern, standalone SVG diagram.\n\n"
+            f"TOPIC: {topic}\n"
+            f"CONTEXT: {context[:2500]}\n"
+            f"DOMAIN: {domain_label}\n"
+            f"RECOMMENDED LAYOUT: {layout_advice}\n\n"
+            "SEMANTIC COLOR CODING (Strictly follow this meaning-based palette - DO NOT use generic green templates!):\n"
+            f"- Background: {colors['bg']}\n"
+            f"- Card Surface: {colors['card_bg']} with border: {colors['card_border']}\n"
+            f"- Primary Concept Accent (Core Definition/Architecture): {colors['primary']}\n"
+            f"- Secondary Concept Accent (Instances/Mechanisms): {colors['secondary']}\n"
+            f"- Flow/Execution/Pointer Accent: {colors['accent']}\n"
+            f"- Success/Output/Target Accent: {colors['success']}\n"
+            f"- Warning/Error/Anti-pattern Accent: {colors['warning']}\n"
+            f"- Main Text: {colors['text_primary']} | Subtext: {colors['text_muted']}\n\n"
+            "STRUCTURAL & AESTHETIC REQUIREMENTS:\n"
+            "1. Output ONLY valid, raw <svg viewBox='0 0 1000 620' xmlns='http://www.w3.org/2000/svg' dir='rtl'>...</svg> markup.\n"
+            "2. Canvas & Frame: A dark/sleek rounded canvas rect (width 1000, height 620, rx 16) with subtle drop shadows.\n"
+            "3. Top Banner: Title badge with topic name, domain pill tag, and visual subtitle.\n"
+            "4. Semantic Cards: Create 3 or 4 distinct cards with generous spacing (width 260-320px, height 120-150px, rx 14):\n"
+            "   - Card A (المفهوم الأساسي): Highlights the fundamental rule/blueprint with primary color accent.\n"
+            "   - Card B (آلية العمل / التطبيق): Shows execution step, memory layout, or process flow with arrows.\n"
+            "   - Card C (مثال توضيحي / كود / نتيجة): Realistic example with monospace styling or output badges.\n"
+            "   - Card D or Alert Badge (تنبيه هام / خطأ شائع): Highlights a critical mistake or edge case using warning colors.\n"
+            "5. Connectors & Direction: Use smooth arrows (<marker id='arrow' ...>) and dashed or solid paths linking cards.\n"
+            "6. Anti-Collision Rules: NEVER overlap text! Leave at least 26px between text lines. Wrap long Arabic labels into multiple <tspan> elements.\n"
+            "7. Typography: font-family=\"'Cairo', 'Tajawal', system-ui, sans-serif\". High contrast legible font sizes (20px titles, 14px body, 12px badges).\n"
+            "8. Return ONLY the raw <svg> tag. NO markdown fences (no ```xml or ```svg). No conversational preamble."
+        )
+
         candidate_models = [ai_cfg.model_name or "gemini-3.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
         seen_models = set()
         text = ""
@@ -879,16 +1065,7 @@ def generate_concept_illustration(
             try:
                 response = client.models.generate_content(
                     model=model_candidate,
-                    contents=(
-                        f"Create a clean, beautiful, high-quality modern educational SVG diagram or visual concept map illustrating:\n"
-                        f"Topic: {topic}\nContext: {context[:2000]}\n\n"
-                        "Requirements:\n"
-                        "- Output ONLY valid raw <svg viewBox='0 0 800 480' xmlns='http://www.w3.org/2000/svg'>...</svg> markup\n"
-                        "- Use pleasant academic colors (#2d6a4f for primary, #d8f3dc for accents, #1b4332 for text, white background #ffffff)\n"
-                        "- Include readable labels (Arabic text supported if prompt is in Arabic)\n"
-                        "- Ensure the diagram is visually informative with cards, arrows, flow paths, or bell curves as appropriate.\n"
-                        "- Do NOT include any markdown code fences or explanatory text. Return the raw <svg> element directly."
-                    ),
+                    contents=svg_designer_prompt,
                     config=types.GenerateContentConfig(
                         system_instruction="You are an expert educational graphic designer and illustrator. Generate clean, valid, standalone SVG diagrams.",
                         temperature=0.2,
@@ -918,35 +1095,109 @@ def generate_concept_illustration(
                 svg_content = text[start_idx : end_idx + 6]
             else:
                 svg_content = text[start_idx:] + "\n</svg>"
+            import re
+            svg_content = re.sub(r'offset=["\'](\d+%)[\^\u0300-\u036F\u1DC0-\u1DFF\w]*["\']', r'offset="\1"', svg_content)
             return {
                 "type": "svg",
                 "svg": svg_content,
                 "title": topic,
-                "description": f"مخطط ورسم توضيحي ذكي: {topic}",
+                "description": f"رسم ومخطط بياني ذكي لـ: {topic}",
             }
 
+        # 4. Rich Dynamic Fallback SVG using the detected domain palette and semantic cards
         safe_topic = topic.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
         fallback_svg = (
-            f"<svg viewBox='0 0 700 240' xmlns='http://www.w3.org/2000/svg'>"
-            f"<rect width='700' height='240' rx='16' fill='#f4f7f5' stroke='#2d6a4f' stroke-width='2'/>"
-            f"<circle cx='350' cy='70' r='36' fill='#d8f3dc'/>"
-            f"<text x='350' y='78' text-anchor='middle' font-size='28'>📊</text>"
-            f"<text x='350' y='140' text-anchor='middle' font-family='sans-serif' font-size='20' font-weight='bold' fill='#1b4332'>{safe_topic}</text>"
-            f"<text x='350' y='180' text-anchor='middle' font-family='sans-serif' font-size='14' fill='#2d6a4f'>مخطط توضيحي تعليمي</text>"
+            f"<svg viewBox='0 0 1000 620' xmlns='http://www.w3.org/2000/svg' dir='rtl'>"
+            f"<defs>"
+            f"  <filter id='dropShadow' x='-10%' y='-10%' width='130%' height='130%'>"
+            f"    <feDropShadow dx='0' dy='6' stdDeviation='8' flood-color='#000000' flood-opacity='0.4'/>"
+            f"  </filter>"
+            f"  <marker id='arrow' markerWidth='10' markerHeight='10' refX='6' refY='3' orient='auto'>"
+            f"    <path d='M0,0 L0,6 L9,3 z' fill='{colors['accent']}' />"
+            f"  </marker>"
+            f"</defs>"
+            f"<rect width='1000' height='620' rx='16' fill='{colors['bg']}'/>"
+            f"<!-- Header Bar -->"
+            f"<rect x='30' y='25' width='940' height='75' rx='12' fill='{colors['card_bg']}' stroke='{colors['card_border']}' stroke-width='1.5'/>"
+            f"<rect x='50' y='42' width='120' height='28' rx='6' fill='{colors['primary']}' fill-opacity='0.2'/>"
+            f"<text x='110' y='61' text-anchor='middle' font-family='sans-serif' font-size='13' font-weight='bold' fill='{colors['primary']}'>{domain_label}</text>"
+            f"<text x='500' y='58' text-anchor='middle' font-family='sans-serif' font-size='22' font-weight='bold' fill='{colors['text_primary']}'>{safe_topic}</text>"
+            f"<text x='500' y='82' text-anchor='middle' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>مخطط مفاهيمي دلالي يوضح البنية، مسار العمل، وأمثلة التطبيق</text>"
+            f"<!-- Card 1: Core Concept -->"
+            f"<g filter='url(#dropShadow)'>"
+            f"  <rect x='40' y='130' width='285' height='260' rx='14' fill='{colors['card_bg']}' stroke='{colors['primary']}' stroke-width='2'/>"
+            f"  <rect x='40' y='130' width='285' height='40' rx='14' fill='{colors['primary']}' fill-opacity='0.15'/>"
+            f"  <text x='182' y='156' text-anchor='middle' font-family='sans-serif' font-size='16' font-weight='bold' fill='{colors['primary']}'>📌 المفهوم والتعريف الأساسي</text>"
+            f"  <text x='295' y='200' text-anchor='end' font-family='sans-serif' font-size='14' fill='{colors['text_primary']}'>القاعدة والأساس العلمي:</text>"
+            f"  <text x='295' y='230' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تحديد الهيكل والخصائص الجوهرية</text>"
+            f"  <text x='295' y='260' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• قواعد البناء والتهيئة الصحيحة</text>"
+            f"  <text x='295' y='290' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تمثيل الكيان والمخطط النظري</text>"
+            f"  <rect x='60' y='330' width='245' height='36' rx='8' fill='{colors['primary']}' fill-opacity='0.2'/>"
+            f"  <text x='182' y='353' text-anchor='middle' font-family='sans-serif' font-size='13' font-weight='bold' fill='{colors['primary']}'>✓ المرجع والمخطط الأصلي</text>"
+            f"</g>"
+            f"<!-- Arrow 1 to 2 -->"
+            f"<path d='M335 260 L365 260' stroke='{colors['accent']}' stroke-width='3' marker-end='url(#arrow)'/>"
+            f"<!-- Card 2: Mechanism / Flow -->"
+            f"<g filter='url(#dropShadow)'>"
+            f"  <rect x='375' y='130' width='285' height='260' rx='14' fill='{colors['card_bg']}' stroke='{colors['secondary']}' stroke-width='2'/>"
+            f"  <rect x='375' y='130' width='285' height='40' rx='14' fill='{colors['secondary']}' fill-opacity='0.15'/>"
+            f"  <text x='517' y='156' text-anchor='middle' font-family='sans-serif' font-size='16' font-weight='bold' fill='{colors['secondary']}'>⚙️ آلية التنفيذ ومسار البيانات</text>"
+            f"  <text x='630' y='200' text-anchor='end' font-family='sans-serif' font-size='14' fill='{colors['text_primary']}'>مراحل التحويل والمعالجة:</text>"
+            f"  <text x='630' y='230' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تخصيص الموارد وحجز الذاكرة</text>"
+            f"  <text x='630' y='260' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تمرير المعاملات والمتغيرات</text>"
+            f"  <text x='630' y='290' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• إدارة الحالة ودورة الحياة</text>"
+            f"  <rect x='395' y='330' width='245' height='36' rx='8' fill='{colors['secondary']}' fill-opacity='0.2'/>"
+            f"  <text x='517' y='353' text-anchor='middle' font-family='sans-serif' font-size='13' font-weight='bold' fill='{colors['secondary']}'>⚡ المعالجة النشطة في الذاكرة</text>"
+            f"</g>"
+            f"<!-- Arrow 2 to 3 -->"
+            f"<path d='M670 260 L700 260' stroke='{colors['accent']}' stroke-width='3' marker-end='url(#arrow)'/>"
+            f"<!-- Card 3: Example & Output -->"
+            f"<g filter='url(#dropShadow)'>"
+            f"  <rect x='710' y='130' width='250' height='260' rx='14' fill='{colors['card_bg']}' stroke='{colors['success']}' stroke-width='2'/>"
+            f"  <rect x='710' y='130' width='250' height='40' rx='14' fill='{colors['success']}' fill-opacity='0.15'/>"
+            f"  <text x='835' y='156' text-anchor='middle' font-family='sans-serif' font-size='16' font-weight='bold' fill='{colors['success']}'>🎯 النتيجة والتطبيق العملي</text>"
+            f"  <text x='930' y='200' text-anchor='end' font-family='sans-serif' font-size='14' fill='{colors['text_primary']}'>المخرجات المتوقعة:</text>"
+            f"  <text x='930' y='230' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تنفيذ صحيح وخالٍ من الأخطاء</text>"
+            f"  <text x='930' y='260' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• استجابة فورية وحالة مستقرة</text>"
+            f"  <text x='930' y='290' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• قيمة مسترجعة قابلة للاستخدام</text>"
+            f"  <rect x='725' y='330' width='220' height='36' rx='8' fill='{colors['success']}' fill-opacity='0.2'/>"
+            f"  <text x='835' y='353' text-anchor='middle' font-family='sans-serif' font-size='13' font-weight='bold' fill='{colors['success']}'>✓ نجاح العملية بنسبة 100%</text>"
+            f"</g>"
+            f"<!-- Bottom Cards: Best Practice & Warning Alert -->"
+            f"<g filter='url(#dropShadow)'>"
+            f"  <rect x='40' y='420' width='445' height='170' rx='14' fill='{colors['card_bg']}' stroke='{colors['accent']}' stroke-width='1.5'/>"
+            f"  <text x='455' y='455' text-anchor='end' font-family='sans-serif' font-size='16' font-weight='bold' fill='{colors['accent']}'>💡 أفضل الممارسات والتوصيات الهندسية</text>"
+            f"  <text x='455' y='490' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تأكد من وضوح تعريف المعاملات لتجنب الغموض في التنفيذ.</text>"
+            f"  <text x='455' y='520' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• افصل بين منطق الحسابات وإدارة الحالة لتحقيق أعلى درجات الاستقرار.</text>"
+            f"  <text x='455' y='550' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• استخدم النماذج المعيارية لضمان قابلية التوسع والصيانة المستمرة.</text>"
+            f"</g>"
+            f"<g filter='url(#dropShadow)'>"
+            f"  <rect x='515' y='420' width='445' height='170' rx='14' fill='{colors['card_bg']}' stroke='{colors['warning']}' stroke-width='1.5'/>"
+            f"  <text x='930' y='455' text-anchor='end' font-family='sans-serif' font-size='16' font-weight='bold' fill='{colors['warning']}'>⚠️ أخطاء شائعة وتحذيرات هامة</text>"
+            f"  <text x='930' y='490' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تجنب تعديل الحالة بشكل غير متزامن دون مزامنة الموارد.</text>"
+            f"  <text x='930' y='520' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• احذر من تجاوز الحدود التخزينية أو عدم التحقق من القيم الفارغة (Null).</text>"
+            f"  <text x='930' y='550' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• لا تهمل معالجة الاستثناءات ومسارات الفشل عند نقاط الاتصال الحرجة.</text>"
+            f"</g>"
             f"</svg>"
         )
         return {
             "type": "svg",
             "svg": fallback_svg,
             "title": topic,
-            "description": f"مخطط تعليمي: {topic}",
+            "description": f"مخطط مفاهيمي دلالي: {topic}",
         }
     except Exception as exc:
         logger.warning("Illustration generation unexpected error: %s", exc)
         safe_prompt = prompt.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
         return {
             "type": "svg",
-            "svg": f"<svg viewBox='0 0 700 200' xmlns='http://www.w3.org/2000/svg'><rect width='700' height='200' rx='12' fill='#f9fbf9' stroke='#d9e8db'/><text x='350' y='105' text-anchor='middle' font-family='sans-serif' font-size='18' fill='#315f50'>{safe_prompt}</text></svg>",
+            "svg": (
+                f"<svg viewBox='0 0 800 240' xmlns='http://www.w3.org/2000/svg' dir='rtl'>"
+                f"<rect width='800' height='240' rx='14' fill='{colors['bg']}' stroke='{colors['card_border']}'/>"
+                f"<text x='400' y='110' text-anchor='middle' font-family='sans-serif' font-size='20' font-weight='bold' fill='{colors['primary']}'>{safe_prompt}</text>"
+                f"<text x='400' y='150' text-anchor='middle' font-family='sans-serif' font-size='14' fill='{colors['text_muted']}'>مخطط مفاهيمي دلالي تم توليده بواسطة المساعد الذكي</text>"
+                f"</svg>"
+            ),
             "title": prompt,
             "description": prompt,
         }

@@ -522,12 +522,13 @@ def chat(
             system_prompt=system_prompt,
             context=context,
         )
-        if not orch_result.success and not orch_result.results.get("chat_qa"):
+        media_result = orch_result.results.get("image_generation")
+        raw_answer = orch_result.results.get("chat_qa") or ""
+
+        if not orch_result.success and not raw_answer and not media_result:
             db.rollback()
             raise gemini_service.GeminiRequestFailed(orch_result.error)
 
-        raw_answer = orch_result.results.get("chat_qa") or ""
-        media_result = orch_result.results.get("image_generation")
         media_type: str | None = None
         media_url: str | None = None
         media_svg: str | None = None
@@ -541,7 +542,7 @@ def chat(
 
         if not raw_answer.strip():
             if media_title:
-                raw_answer = f"إليك الرسم التوضيحي والمخطط المطلوب لـ: {media_title}"
+                raw_answer = f"إليك المخطط البصري الدلالي المطلوب لـ: {media_title}. يمكنك تكبيره واستعراضه أو تنزيله كملف SVG أو PNG مباشرة."
             else:
                 raw_answer = "تم معالجة استفسارك بنجاح."
     except gemini_service.GeminiNotConfigured:

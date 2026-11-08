@@ -177,8 +177,6 @@ def _execute_step(
         # Fatal errors: don't retry, re-raise immediately
         if isinstance(exc, (
             __import__("app.services.gemini", fromlist=["GeminiNotConfigured"]).GeminiNotConfigured,
-            __import__("app.services.gemini", fromlist=["GeminiRateLimited"]).GeminiRateLimited,
-            
         )):
             raise
         if not use_fallback:

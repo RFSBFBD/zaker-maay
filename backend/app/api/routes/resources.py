@@ -346,6 +346,84 @@ def process_audio_transcript(
     return resource
 
 
+@router.post("/upload-direct", response_model=ResourceResponse, status_code=status.HTTP_201_CREATED)
+async def upload_direct_resource(
+    subject_id: UUID,
+    file: UploadFile = File(...),
+    profile: Annotated[UserProfile, Depends(get_current_profile)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+) -> Resource:
+    """Directly stream and process an audio or document file server-to-server, eliminating browser CORS."""
+    _accessible_subject(db, subject_id, profile)
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=422, detail="الملف المرفوع فارغ.")
+    if len(file_bytes) > MAX_FILE_BYTES:
+        raise HTTPException(status_code=413, detail="حجم الملف يتجاوز الحد الأقصى المسموح به (100 ميغابايت).")
+
+    file_name = file.filename or "uploaded_resource"
+    stem, extension = _safe_filename(file_name)
+    if extension not in ALLOWED_TYPES:
+        raise HTTPException(status_code=422, detail="نوع الملف غير مدعوم.")
+
+    mime_type, _ = ALLOWED_TYPES[extension]
+    is_audio = extension in TRANSCRIBABLE_EXTENSIONS
+
+    transcript_text: str | None = None
+    transcript_language: str | None = None
+    processed_content: bytes = file_bytes
+
+    if is_audio:
+        try:
+            transcript = gemini.transcribe_audio(content=file_bytes, mime_type=mime_type, db=db)
+            transcript_text = transcript.transcript
+            transcript_language = transcript.language
+            processed_content = transcript_text.encode("utf-8")
+        except gemini.GeminiNotConfigured:
+            raise HTTPException(status_code=503, detail="خدمة التفريغ الصوتي الذكي غير مهيأة.")
+        except gemini.GeminiRateLimited:
+            raise HTTPException(status_code=429, detail="تم تجاوز حد طلبات الذكاء الاصطناعي مؤقتاً.")
+        except Exception as exc:
+            logger.exception("Audio transcription failed: %s", exc)
+            raise HTTPException(status_code=502, detail="تعذر تفريغ التسجيل الصوتي بواسطة الذكاء الاصطناعي.")
+
+    # Process text / chunks for the AI Agent
+    doc_name = f"{stem}.txt" if is_audio else file_name
+    processed = process_document(doc_name, processed_content)
+
+    sha256 = hashlib.sha256(f"{file_name}:{uuid4().hex}".encode()).hexdigest()
+    resource = Resource(
+        subject_id=subject_id,
+        uploaded_by=profile.id,
+        file_name=file_name,
+        mime_type=mime_type,
+        size_bytes=len(file_bytes),
+        sha256=sha256,
+        cloudinary_public_id=f"direct-resource/{uuid4().hex}",
+        secure_url="internal://direct-resource" if not is_audio else "internal://audio-transcript",
+        transcript_text=transcript_text,
+        transcript_language=transcript_language,
+        transcription_model="gemini" if is_audio else None,
+        audio_duration_seconds=None,
+        processing_status=processed.status,
+    )
+    db.add(resource)
+    db.flush()
+
+    for index, (page, chunk_text) in enumerate(processed.chunks):
+        db.add(
+            ResourceChunk(
+                resource_id=resource.id,
+                chunk_index=index,
+                page_number=page,
+                content=chunk_text,
+            )
+        )
+    db.commit()
+    db.refresh(resource)
+    return resource
+
+
 def _fetch_file_from_cloudinary(public_id: str, resource_type: str, secure_url: str | None = None) -> tuple[bytes, str]:
     """Download a file from Cloudinary by its public_id or secure_url for local processing.
 

@@ -26,6 +26,11 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   FolderIcon,
+  DownloadIcon,
+  MaximizeIcon,
+  CopyIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
 } from "@/components/icons";
 
 type ChatMedia = {
@@ -241,6 +246,298 @@ export function SubjectPageContent({ subjectId }: { subjectId: string }) {
   );
 }
 
+function downloadMediaFile(media: ChatMedia, format: "svg" | "png") {
+  const safeTitle = (media.title || "educational-visual")
+    .replace(/[^a-zA-Z0-9\u0600-\u06FF_-]/g, "_")
+    .slice(0, 40);
+
+  if (format === "svg" && media.svg) {
+    const blob = new Blob([media.svg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safeTitle}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } else if (format === "png" && media.svg) {
+    const svgBlob = new Blob([media.svg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1600;
+      canvas.height = 992;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#0a0f1d";
+        ctx.fillRect(0, 0, 1600, 992);
+        ctx.drawImage(img, 0, 0, 1600, 992);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const pngUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = pngUrl;
+            a.download = `${safeTitle}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(pngUrl);
+          }
+        }, "image/png");
+      }
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  } else if (media.url) {
+    const a = document.createElement("a");
+    a.href = media.url;
+    a.download = `${safeTitle}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
+
+function MediaLightboxModal({
+  media,
+  onClose,
+}: {
+  media: ChatMedia;
+  onClose: () => void;
+}) {
+  const [zoom, setZoom] = useState(1);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  const handleCopyCode = async () => {
+    if (media.svg) {
+      try {
+        await navigator.clipboard.writeText(media.svg);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 99999,
+        background: "rgba(8, 12, 22, 0.9)",
+        backdropFilter: "blur(10px)",
+        display: "flex",
+        flexDirection: "column",
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {/* Modal Top Bar */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 24px",
+          background: "rgba(15, 23, 42, 0.98)",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+          gap: 14,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span
+            style={{
+              padding: "4px 10px",
+              borderRadius: 6,
+              background: "rgba(56, 189, 248, 0.15)",
+              color: "#38bdf8",
+              fontSize: 12,
+              fontWeight: "bold",
+            }}
+          >
+            {media.type === "svg" ? "مخطط مفاهيمي دلالي" : "صورة تعليمية ذكية"}
+          </span>
+          <h3 style={{ margin: 0, fontSize: 16, color: "#f8fafc", fontWeight: 600 }}>
+            {media.title || "استعراض الرسم التوضيحي"}
+          </h3>
+        </div>
+
+        {/* Action Controls */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {/* Zoom controls */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              background: "rgba(255,255,255,0.06)",
+              borderRadius: 8,
+              padding: 2,
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ color: "#cbd5e1", padding: "4px 8px" }}
+              title="تصغير"
+              onClick={() => setZoom((z) => Math.max(0.5, Number((z - 0.2).toFixed(2))))}
+            >
+              <ZoomOutIcon size={16} />
+            </button>
+            <span style={{ fontSize: 12, color: "#94a3b8", padding: "0 6px", minWidth: 42, textAlign: "center" }}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ color: "#cbd5e1", padding: "4px 8px" }}
+              title="تكبير"
+              onClick={() => setZoom((z) => Math.min(2.5, Number((z + 0.2).toFixed(2))))}
+            >
+              <ZoomInIcon size={16} />
+            </button>
+            {zoom !== 1 && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: 11, color: "#38bdf8", padding: "2px 6px" }}
+                onClick={() => setZoom(1)}
+              >
+                إعادة
+              </button>
+            )}
+          </div>
+
+          {/* Copy Code */}
+          {media.type === "svg" && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ color: copied ? "#10b981" : "#cbd5e1", border: "1px solid rgba(255,255,255,0.1)" }}
+              onClick={handleCopyCode}
+              title="نسخ كود الـ SVG"
+            >
+              <CopyIcon size={15} />
+              <span>{copied ? "تم النسخ!" : "نسخ الكود"}</span>
+            </button>
+          )}
+
+          {/* Download SVG */}
+          {media.type === "svg" && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              style={{
+                background: "rgba(56, 189, 248, 0.15)",
+                color: "#38bdf8",
+                border: "1px solid rgba(56, 189, 248, 0.3)",
+              }}
+              onClick={() => downloadMediaFile(media, "svg")}
+            >
+              <DownloadIcon size={15} />
+              <span>تنزيل SVG</span>
+            </button>
+          )}
+
+          {/* Download PNG */}
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => downloadMediaFile(media, "png")}
+          >
+            <DownloadIcon size={15} />
+            <span>تنزيل كصورة PNG</span>
+          </button>
+
+          {/* Close */}
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            style={{ color: "#f87171", padding: "6px" }}
+            onClick={onClose}
+            aria-label="إغلاق النافذة"
+          >
+            <XIcon size={20} />
+          </button>
+        </div>
+      </div>
+
+      {/* Modal Canvas Body */}
+      <div
+        style={{
+          flex: 1,
+          overflow: "auto",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div
+          style={{
+            transform: `scale(${zoom})`,
+            transformOrigin: "center center",
+            transition: "transform 0.15s ease-out",
+            maxWidth: "92vw",
+            maxHeight: "82vh",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
+            borderRadius: 14,
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {media.type === "svg" && media.svg ? (
+            <div
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(media.svg, { USE_PROFILES: { svg: true } }),
+              }}
+              style={{
+                width: "100%",
+                maxWidth: 1040,
+                display: "block",
+                background: "transparent",
+              }}
+            />
+          ) : media.type === "image" && media.url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={media.url}
+              alt={media.title || "رسم تعليمي"}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "80vh",
+                display: "block",
+                objectFit: "contain",
+              }}
+            />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    FULL-SCREEN IMMERSIVE AI CHAT
    ═══════════════════════════════════════════════════════════════════ */
@@ -258,6 +555,7 @@ function FullScreenChat({
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [showThreadsDrawer, setShowThreadsDrawer] = useState(false);
   const [loadingThreads, setLoadingThreads] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<ChatMedia | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -693,34 +991,104 @@ function FullScreenChat({
                   </div>
                 )}
 
-                {/* Inline SVG or Educational Image */}
+                {/* Inline Semantic SVG or Educational Image */}
                 {msg.media && (
                   <div
                     style={{
                       marginTop: 14,
-                      borderRadius: 10,
+                      borderRadius: 12,
                       overflow: "hidden",
                       background: "var(--surface)",
                       border: "1px solid var(--line)",
-                      padding: 12,
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
                     }}
                   >
-                    {msg.media.type === "svg" && msg.media.svg && (
-                      <div
-                        dangerouslySetInnerHTML={{
-                          __html: DOMPurify.sanitize(msg.media.svg, { USE_PROFILES: { svg: true } }),
-                        }}
-                        style={{ maxWidth: "100%", overflowX: "auto" }}
-                      />
-                    )}
-                    {msg.media.type === "image" && msg.media.url && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={msg.media.url}
-                        alt={msg.media.title || "رسم توضيحي"}
-                        style={{ maxWidth: "100%", height: "auto", display: "block", borderRadius: 6 }}
-                      />
-                    )}
+                    {/* Media Card Header with Actions */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "8px 12px",
+                        background: "rgba(0, 0, 0, 0.03)",
+                        borderBottom: "1px solid var(--line)",
+                        gap: 8,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <SparklesIcon size={14} style={{ color: "var(--accent)" }} />
+                        <span style={{ fontSize: 12.5, fontWeight: "bold", color: "var(--foreground)" }}>
+                          {msg.media.title || (msg.media.type === "svg" ? "مخطط مفاهيمي دلالي" : "صورة تعليمية")}
+                        </span>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: 11.5, padding: "3px 8px", height: "auto" }}
+                          onClick={() => setSelectedMedia(msg.media || null)}
+                          title="فتح وتكبير المخطط داخل المنصة"
+                        >
+                          <MaximizeIcon size={13} />
+                          <span>تكبير واستعراض</span>
+                        </button>
+
+                        {msg.media.type === "svg" && msg.media.svg && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ fontSize: 11.5, padding: "3px 8px", height: "auto" }}
+                            onClick={() => downloadMediaFile(msg.media!, "svg")}
+                            title="تنزيل ملف SVG"
+                          >
+                            <DownloadIcon size={13} />
+                            <span>SVG</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize: 11.5, padding: "3px 8px", height: "auto" }}
+                          onClick={() => downloadMediaFile(msg.media!, "png")}
+                          title="تنزيل كصورة PNG"
+                        >
+                          <DownloadIcon size={13} />
+                          <span>PNG</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Clickable Graphic Viewport */}
+                    <div
+                      onClick={() => setSelectedMedia(msg.media || null)}
+                      style={{
+                        padding: 12,
+                        cursor: "pointer",
+                        position: "relative",
+                        transition: "background 0.15s ease",
+                      }}
+                      title="اضغط للتكبير والاستعراض الكامل داخل المنصة"
+                    >
+                      {msg.media.type === "svg" && msg.media.svg && (
+                        <div
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(msg.media.svg, { USE_PROFILES: { svg: true } }),
+                          }}
+                          style={{ maxWidth: "100%", overflowX: "auto" }}
+                        />
+                      )}
+                      {msg.media.type === "image" && msg.media.url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={msg.media.url}
+                          alt={msg.media.title || "رسم توضيحي"}
+                          style={{ maxWidth: "100%", height: "auto", display: "block", borderRadius: 8 }}
+                        />
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -852,6 +1220,14 @@ function FullScreenChat({
           </button>
         </form>
       </div>
+
+      {/* In-Platform Visual Lightbox Modal */}
+      {selectedMedia && (
+        <MediaLightboxModal
+          media={selectedMedia}
+          onClose={() => setSelectedMedia(null)}
+        />
+      )}
     </div>
   );
 }
