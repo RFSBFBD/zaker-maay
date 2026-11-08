@@ -330,3 +330,65 @@ def test_transcription_provider_failure_leaves_audio_unstored_and_returns_error(
     assert response.status_code == 502
     assert "بقي الملف على جهازك" in response.json()["detail"]
     assert db.query(Resource).count() == 0
+
+
+def test_gemini_upload_url_rejects_oversized_file(
+    resource_client: tuple[TestClient, Session, UserProfile, Subject]
+) -> None:
+    client, session, user, subject = resource_client
+    res = client.post(
+        f"/api/v1/subjects/{subject.id}/resources/gemini-upload-url?file_name=lecture.mp3&file_size={101 * 1024 * 1024}&mime_type=audio/mpeg"
+    )
+    assert res.status_code == 413
+    assert "100 ميغابايت" in res.json()["detail"]
+
+
+def test_gemini_upload_url_accepts_pdf_and_audio(
+    resource_client: tuple[TestClient, Session, UserProfile, Subject], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from unittest.mock import MagicMock
+    client, session, user, subject = resource_client
+
+    mock_post = MagicMock()
+    mock_post.return_value.status_code = 200
+    mock_post.return_value.headers = {"x-goog-upload-url": "https://upload.example/resumable"}
+    monkeypatch.setattr("requests.post", mock_post)
+
+    # Audio
+    res_audio = client.post(
+        f"/api/v1/subjects/{subject.id}/resources/gemini-upload-url?file_name=lecture.m4a&file_size=5000000&mime_type=audio/mp4"
+    )
+    assert res_audio.status_code == 200
+    assert res_audio.json()["upload_url"] == "https://upload.example/resumable"
+
+    # PDF Document
+    res_pdf = client.post(
+        f"/api/v1/subjects/{subject.id}/resources/gemini-upload-url?file_name=huge_book.pdf&file_size=35000000&mime_type=application/pdf"
+    )
+    assert res_pdf.status_code == 200
+    assert res_pdf.json()["upload_url"] == "https://upload.example/resumable"
+
+
+def test_process_gemini_file_handles_document(
+    resource_client: tuple[TestClient, Session, UserProfile, Subject], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, session, user, subject = resource_client
+
+    monkeypatch.setattr(
+        "app.services.gemini.extract_gemini_document",
+        lambda *args, **kwargs: "الفصل الأول: مقدمة في علوم الحاسب.\nالخوارزميات هي خطوات منطقية متسلسلة لحل المشكلات.",
+    )
+
+    res = client.post(
+        f"/api/v1/subjects/{subject.id}/resources/process-audio-transcript",
+        json={
+            "gemini_file_name": "files/abc12345",
+            "file_name": "computer_science_book.pdf",
+            "size_bytes": 35000000,
+            "mime_type": "application/pdf",
+        },
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["file_name"] == "computer_science_book.pdf"
+    assert data["size_bytes"] == 35000000

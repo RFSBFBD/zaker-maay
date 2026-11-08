@@ -24,14 +24,14 @@ from app.db.models import Resource, ResourceChunk, Subject, SubjectMembership, U
 from app.db.session import get_db
 from app.services import cloudinary_storage
 from app.services import gemini
-from app.services.ai_router import safe_call_ai
+from app.services.ai_router import resolve_ai_config, safe_call_ai
 from app.services.audio_processing import InvalidAudio, TRANSCRIBABLE_EXTENSIONS, inspect_audio
-from app.services.document_processing import process_document
+from app.services.document_processing import SUPPORTED_TEXT_EXTENSIONS, process_document
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/subjects/{subject_id}/resources", tags=["resources"])
 
-MAX_FILE_BYTES = 50 * 1024 * 1024  # 50 MiB — balanced against the 60s Vercel function timeout
+MAX_FILE_BYTES = 100 * 1024 * 1024  # 100 MiB
 ALLOWED_TYPES: dict[str, tuple[str, str]] = {
     ".pdf": ("application/pdf", "raw"),
     ".txt": ("text/plain", "raw"),
@@ -40,6 +40,10 @@ ALLOWED_TYPES: dict[str, tuple[str, str]] = {
     ".wav": ("audio/wav", "video"),
     ".m4a": ("audio/mp4", "video"),
     ".webm": ("audio/webm", "video"),
+    ".ogg": ("audio/ogg", "video"),
+    ".aac": ("audio/aac", "video"),
+    ".flac": ("audio/flac", "video"),
+    ".mp4": ("audio/mp4", "video"),
 }
 
 
@@ -210,7 +214,7 @@ def get_gemini_upload_url(
     file_size: int = Query(...),
     mime_type: str = Query("audio/mp4"),
 ) -> dict:
-    """Generate a resumable Gemini upload URL so the browser can upload audio directly to the AI agent."""
+    """Generate a resumable Gemini upload URL so the browser can upload files directly to the AI agent."""
     _accessible_subject(db, subject_id, profile)
     settings = get_settings()
     ai_cfg = resolve_ai_config(
@@ -220,14 +224,15 @@ def get_gemini_upload_url(
         default_key=settings.gemini_api_key,
     )
     if not ai_cfg.api_key:
-        raise HTTPException(status_code=503, detail="خدمة التفريغ الذكي غير مهيأة.")
+        raise HTTPException(status_code=503, detail="خدمة الذكاء الاصطناعي غير مهيأة.")
 
     _, extension = _safe_filename(file_name)
-    if extension not in TRANSCRIBABLE_EXTENSIONS:
-        raise HTTPException(status_code=422, detail="التفريغ الصوتي يدعم ملفات MP3 و WAV و M4A فقط.")
+    allowed_extensions = TRANSCRIBABLE_EXTENSIONS | SUPPORTED_TEXT_EXTENSIONS
+    if extension not in allowed_extensions:
+        raise HTTPException(status_code=422, detail="نوع الملف غير مدعوم للمعالجة المباشرة.")
 
     if file_size > MAX_FILE_BYTES:
-        raise HTTPException(status_code=413, detail="حجم الملف يتجاوز الحد الأقصى المسموح به (50 ميغابايت).")
+        raise HTTPException(status_code=413, detail="حجم الملف يتجاوز الحد الأقصى المسموح به (100 ميغابايت).")
 
     res = requests.post(
         "https://generativelanguage.googleapis.com/upload/v1beta/files",
@@ -248,7 +253,7 @@ def get_gemini_upload_url(
 
     upload_url = res.headers.get("x-goog-upload-url")
     if not upload_url:
-        raise HTTPException(status_code=502, detail="تعذر الحصول على رابط رفع التسجيل الصوتي.")
+        raise HTTPException(status_code=502, detail="تعذر الحصول على رابط رفع الملف.")
 
     return {"upload_url": upload_url}
 
@@ -260,29 +265,52 @@ def process_audio_transcript(
     profile: Annotated[UserProfile, Depends(get_current_profile)],
     db: Annotated[Session, Depends(get_db)],
 ) -> Resource:
-    """Transcribe an audio file uploaded directly to Gemini and index the transcript as study material."""
+    """Process an audio or large document file uploaded directly to Gemini and index it as study material."""
     _accessible_subject(db, subject_id, profile)
     _, extension = _safe_filename(payload.file_name)
-    if extension not in TRANSCRIBABLE_EXTENSIONS:
-        raise HTTPException(status_code=422, detail="التفريغ الصوتي يدعم ملفات MP3 و WAV و M4A فقط.")
+    is_audio = extension in TRANSCRIBABLE_EXTENSIONS
+    is_document = extension in SUPPORTED_TEXT_EXTENSIONS
+    if not is_audio and not is_document:
+        raise HTTPException(status_code=422, detail="نوع الملف غير مدعوم للمعالجة المباشرة.")
 
-    try:
-        transcript = gemini.transcribe_gemini_file(
-            payload.gemini_file_name,
-            payload.mime_type,
-            db=db,
-        )
-    except gemini.GeminiNotConfigured:
-        raise HTTPException(status_code=503, detail="خدمة التفريغ الذكي غير مهيأة.")
-    except (gemini.GeminiRateLimited, gemini.GeminiRequestFailed) as exc:
-        logger.exception("Gemini audio transcription failed: %s", exc)
-        raise HTTPException(status_code=502, detail="تعذر تفريغ الملف الصوتي بواسطة الذكاء الاصطناعي.")
+    transcript_text: str | None = None
+    transcript_language: str | None = None
+    processed_content: bytes = b""
 
-    # Process the transcript text into chunks for the AI Agent
-    transcript_bytes = transcript.transcript.encode("utf-8")
+    if is_audio:
+        try:
+            transcript = gemini.transcribe_gemini_file(
+                payload.gemini_file_name,
+                payload.mime_type,
+                db=db,
+            )
+            transcript_text = transcript.transcript
+            transcript_language = transcript.language
+            processed_content = transcript_text.encode("utf-8")
+        except gemini.GeminiNotConfigured:
+            raise HTTPException(status_code=503, detail="خدمة التفريغ الذكي غير مهيأة.")
+        except (gemini.GeminiRateLimited, gemini.GeminiRequestFailed) as exc:
+            logger.exception("Gemini audio transcription failed: %s", exc)
+            raise HTTPException(status_code=502, detail="تعذر تفريغ الملف الصوتي بواسطة الذكاء الاصطناعي.")
+    else:
+        try:
+            extracted_text = gemini.extract_gemini_document(
+                payload.gemini_file_name,
+                payload.mime_type,
+                db=db,
+            )
+            transcript_text = extracted_text
+            processed_content = extracted_text.encode("utf-8")
+        except gemini.GeminiNotConfigured:
+            raise HTTPException(status_code=503, detail="خدمة معالجة المستندات الذكية غير مهيأة.")
+        except (gemini.GeminiRateLimited, gemini.GeminiRequestFailed) as exc:
+            logger.exception("Gemini document extraction failed: %s", exc)
+            raise HTTPException(status_code=502, detail="تعذر استخراج محتوى الكتاب/المستند بواسطة الذكاء الاصطناعي.")
+
+    # Process text into chunks for the AI Agent
     processed = process_document(
         f"{PurePosixPath(payload.file_name).stem}.txt",
-        transcript_bytes,
+        processed_content,
     )
 
     sha256 = hashlib.sha256(f"{payload.file_name}:{uuid4().hex}".encode()).hexdigest()
@@ -293,10 +321,10 @@ def process_audio_transcript(
         mime_type=payload.mime_type,
         size_bytes=payload.size_bytes,
         sha256=sha256,
-        cloudinary_public_id=f"audio-transcript/{uuid4().hex}",
-        secure_url="internal://audio-transcript",
-        transcript_text=transcript.transcript,
-        transcript_language=transcript.language,
+        cloudinary_public_id=f"gemini-resource/{uuid4().hex}" if not is_audio else f"audio-transcript/{uuid4().hex}",
+        secure_url="internal://gemini-resource" if not is_audio else "internal://audio-transcript",
+        transcript_text=transcript_text,
+        transcript_language=transcript_language,
         transcription_model="gemini",
         audio_duration_seconds=None,
         processing_status=processed.status,
@@ -304,13 +332,13 @@ def process_audio_transcript(
     db.add(resource)
     db.flush()
 
-    for chunk in processed.chunks:
+    for index, (page, chunk_text) in enumerate(processed.chunks):
         db.add(
             ResourceChunk(
                 resource_id=resource.id,
-                chunk_index=chunk.chunk_index,
-                page_number=chunk.page_number,
-                content=chunk.content,
+                chunk_index=index,
+                page_number=page,
+                content=chunk_text,
             )
         )
     db.commit()
@@ -346,7 +374,7 @@ def _fetch_file_from_cloudinary(public_id: str, resource_type: str, secure_url: 
                 tmp.write(chunk)
                 content += chunk
                 if len(content) > MAX_FILE_BYTES + 1:
-                    raise HTTPException(status_code=413, detail="File exceeds the 50 MiB limit.")
+                    raise HTTPException(status_code=413, detail="File exceeds the 100 MiB limit.")
         tmp.seek(0)
         headers = dict(resp.headers)
         mime_type = headers.get("content-type", "application/octet-stream").split(";")[0]
@@ -386,7 +414,7 @@ def upload_resource(
         raise HTTPException(status_code=502, detail="تعذر تنزيل الملف المرفوع للمعالجة.") from None
 
     if len(content) > MAX_FILE_BYTES:
-        raise HTTPException(status_code=413, detail="File exceeds the 50 MiB limit.")
+        raise HTTPException(status_code=413, detail="File exceeds the 100 MiB limit.")
     if not content:
         raise HTTPException(status_code=422, detail="Empty files are not supported.")
     mime_type = _validate_content(content, extension)
@@ -589,7 +617,7 @@ def get_download_url(
     resource = db.scalar(select(Resource).where(Resource.id == resource_id, Resource.subject_id == subject_id))
     if resource is None:
         raise HTTPException(status_code=404, detail="Resource not found.")
-    if resource.cloudinary_public_id.startswith("audio-transcript/") or resource.secure_url.startswith("internal://"):
+    if resource.cloudinary_public_id.startswith(("audio-transcript/", "gemini-resource/")) or resource.secure_url.startswith("internal://"):
         import urllib.parse
         encoded = urllib.parse.quote(resource.transcript_text or "")
         return DownloadResponse(download_url=f"data:text/plain;charset=utf-8,{encoded}")

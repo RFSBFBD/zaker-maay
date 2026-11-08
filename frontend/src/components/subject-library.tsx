@@ -146,13 +146,38 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
 
     try {
       const headers = await getHeaders();
-      const isAudio = file.type.startsWith("audio/") || /\.(mp3|wav|m4a|ogg)$/i.test(file.name);
+      const isAudio =
+        file.type.startsWith("audio/") ||
+        /\.(mp3|wav|m4a|ogg|webm|aac|flac|mp4)$/i.test(file.name);
 
-      // Direct upload to AI Agent for audio files (bypassing double storage)
-      if (isAudio) {
-        setNotice("جارٍ رفع التسجيل الصوتي مباشرة إلى المساعد الذكي…");
+      // Direct upload to Gemini for ALL audio files, or any document > 18 MiB
+      // This completely bypasses Cloudinary's 20 MiB limit on free plans!
+      const isLargeDocument = file.size > 18 * 1024 * 1024;
+      const useGeminiDirect = isAudio || isLargeDocument;
+
+      if (useGeminiDirect) {
+        setNotice(
+          isAudio
+            ? "جارٍ رفع التسجيل الصوتي مباشرة إلى المساعد الذكي دون استهلاك مساحة…"
+            : "جارٍ رفع الملف الكبير مباشرة إلى المساعد الذكي للمعالجة والفهرسة…"
+        );
+        let mime = file.type;
+        if (!mime) {
+          if (/\.(mp3)$/i.test(file.name)) mime = "audio/mpeg";
+          else if (/\.(wav)$/i.test(file.name)) mime = "audio/wav";
+          else if (/\.(m4a)$/i.test(file.name)) mime = "audio/mp4";
+          else if (/\.(webm)$/i.test(file.name)) mime = "audio/webm";
+          else if (/\.(ogg)$/i.test(file.name)) mime = "audio/ogg";
+          else if (/\.(aac)$/i.test(file.name)) mime = "audio/aac";
+          else if (/\.(flac)$/i.test(file.name)) mime = "audio/flac";
+          else if (/\.(mp4)$/i.test(file.name)) mime = "audio/mp4";
+          else if (/\.(pdf)$/i.test(file.name)) mime = "application/pdf";
+          else if (/\.(docx)$/i.test(file.name)) mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+          else mime = "application/octet-stream";
+        }
+
         const { upload_url } = await apiRequest<{ upload_url: string }>(
-          `/api/v1/subjects/${subjectId}/resources/gemini-upload-url?file_name=${encodeURIComponent(file.name)}&file_size=${file.size}&mime_type=${encodeURIComponent(file.type || "audio/mp4")}`,
+          `/api/v1/subjects/${subjectId}/resources/gemini-upload-url?file_name=${encodeURIComponent(file.name)}&file_size=${file.size}&mime_type=${encodeURIComponent(mime)}`,
           { method: "POST", headers }
         );
 
@@ -167,15 +192,19 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
         });
 
         if (!uploadResp.ok) {
-          throw new Error("تعذر إرسال التسجيل الصوتي إلى خدمة المساعد الذكي.");
+          throw new Error("تعذر إرسال الملف إلى خدمة المساعد الذكي.");
         }
         const uploadData = await uploadResp.json();
         const geminiFileName = uploadData?.file?.name;
         if (!geminiFileName) {
-          throw new Error("تعذر إكمال رفع التسجيل الصوتي.");
+          throw new Error("تعذر إكمال رفع الملف إلى خدمة الذكاء الاصطناعي.");
         }
 
-        setNotice("تم رفع الصوت بنجاح! جارٍ الآن التفريغ النصي الذكي وإضافته كمرجع دراسي…");
+        setNotice(
+          isAudio
+            ? "تم رفع الصوت بنجاح! جارٍ الآن التفريغ النصي الذكي وإضافته كمرجع دراسي…"
+            : "تم رفع الملف بنجاح! جارٍ الآن استخراج المحتوى العلمي وفهرسته…"
+        );
 
         const created = await apiRequest<Resource>(
           `/api/v1/subjects/${subjectId}/resources/process-audio-transcript`,
@@ -186,7 +215,7 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
               gemini_file_name: geminiFileName,
               file_name: file.name,
               size_bytes: file.size,
-              mime_type: file.type || "audio/mp4",
+              mime_type: mime,
             }),
           },
           120_000
@@ -195,7 +224,11 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
         setResources((current) => [created, ...current]);
         form.reset();
         setTranscribeAudio(false);
-        setNotice("تم تفريغ المحاضرة الصوتية بنجاح وإضافتها كمرجع دراسي يعتمد عليه المساعد الذكي!");
+        setNotice(
+          isAudio
+            ? "تم تفريغ المحاضرة الصوتية بنجاح وإضافتها كمرجع دراسي يعتمد عليه المساعد الذكي!"
+            : "تمت معالجة الكتاب/الملف وفهرسته بنجاح داخل مكتبة المادة!"
+        );
         return;
       }
 
@@ -363,13 +396,13 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
             id="resource-file"
             name="file"
             type="file"
-            accept=".pdf,.txt,.docx,.mp3,.wav,.m4a,.webm"
+            accept=".pdf,.txt,.docx,.mp3,.wav,.m4a,.webm,.ogg,.aac,.flac,.mp4"
             required
             disabled={uploading}
             onChange={(e) => {
               const selected = e.target.files?.[0];
               if (selected) {
-                const isAudio = selected.type.startsWith("audio/") || /\.(mp3|wav|m4a|webm)$/i.test(selected.name);
+                const isAudio = selected.type.startsWith("audio/") || /\.(mp3|wav|m4a|ogg|webm|aac|flac|mp4)$/i.test(selected.name);
                 if (isAudio) {
                   setTranscribeAudio(true);
                 }

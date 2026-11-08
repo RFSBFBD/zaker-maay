@@ -5,7 +5,7 @@ from tinytag import TinyTag, TinyTagException
 
 MAX_TRANSCRIPTION_BYTES = 100 * 1024 * 1024
 MAX_AUDIO_DURATION_SECONDS = 180 * 60
-TRANSCRIBABLE_EXTENSIONS = {".mp3", ".wav", ".m4a"}
+TRANSCRIBABLE_EXTENSIONS = {".mp3", ".wav", ".m4a", ".ogg", ".webm", ".aac", ".flac", ".mp4"}
 
 
 class InvalidAudio(ValueError):

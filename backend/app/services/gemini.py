@@ -475,6 +475,60 @@ def transcribe_gemini_file(
                 pass
             client.close()
 
+def extract_gemini_document(
+    gemini_file_name: str,
+    mime_type: str = "application/pdf",
+    *,
+    db: Session | None = None,
+) -> str:
+    """Extract educational text from a document uploaded directly to Gemini Files API."""
+    settings = get_settings()
+    ai_cfg = resolve_ai_config(
+        "document_ai",
+        db=db,
+        default_model=settings.gemini_model,
+        default_key=settings.gemini_api_key,
+    )
+    if not ai_cfg.api_key:
+        raise GeminiNotConfigured
+    client = None
+    try:
+        client = genai.Client(
+            api_key=ai_cfg.api_key,
+            http_options=types.HttpOptions(timeout=120_000),
+        )
+        file_ref = client.files.get(name=gemini_file_name)
+        response = client.models.generate_content(
+            model=ai_cfg.model_name,
+            contents=[
+                "Extract and transcribe the educational study content and all text from this document accurately in its original language. Include all chapter headings, definitions, explanations, formulas, and concepts.",
+                file_ref,
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction="You are an expert academic document digitizer. Extract all educational text from the document faithfully and completely.",
+                temperature=0.1,
+                max_output_tokens=ai_cfg.max_output_tokens,
+            ),
+        )
+        text = response.text or ""
+        if not text.strip():
+            raise GeminiRequestFailed
+        return text.strip()
+    except GeminiRequestFailed:
+        raise
+    except Exception as exc:
+        if getattr(exc, "code", None) == 429:
+            raise GeminiRateLimited from None
+        logger.warning("Gemini document extraction failed: %s", exc)
+        raise GeminiRequestFailed from None
+    finally:
+        if client is not None:
+            try:
+                client.files.delete(name=gemini_file_name)
+            except Exception:
+                pass
+            client.close()
+
 
 def _generate_study_artifact(
     instructions: str,

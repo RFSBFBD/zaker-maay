@@ -24,7 +24,7 @@ def test_inspect_audio_verifies_duration_from_wav_metadata() -> None:
 
 def test_inspect_audio_rejects_unsupported_format() -> None:
     with pytest.raises(InvalidAudio, match="supports MP3, WAV, and M4A"):
-        audio_processing.inspect_audio(b"audio", ".webm")
+        audio_processing.inspect_audio(b"audio", ".flv")
 
 
 def test_inspect_audio_rejects_unverified_duration(monkeypatch: pytest.MonkeyPatch) -> None:
