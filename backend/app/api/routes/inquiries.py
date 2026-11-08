@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -188,7 +188,7 @@ def respond_to_inquiry(
         inq.admin_answer = payload.admin_answer.strip()
     if payload.admin_notes is not None:
         inq.admin_notes = payload.admin_notes.strip()
-    inq.answered_at = datetime.now()
+    inq.answered_at = datetime.now(timezone.utc)
     inq.is_read = False  # trigger notification for student
     db.commit()
 

@@ -177,7 +177,8 @@ def generate_grounded_answer(
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 temperature=ai_cfg.temperature,
-                max_output_tokens=ai_cfg.max_output_tokens,
+                max_output_tokens=max(ai_cfg.max_output_tokens, 2048),
+                thinking_config=types.ThinkingConfig(thinking_level="minimal"),
             ),
         )
         logger.info("[chat_qa] Gemini response received: %s", response.text)
@@ -735,8 +736,9 @@ def generate_follow_up_suggestions(
             ),
             config=types.GenerateContentConfig(
                 temperature=0.4,
-                max_output_tokens=300,
+                max_output_tokens=500,
                 response_mime_type="application/json",
+                thinking_config=types.ThinkingConfig(thinking_level="minimal"),
             ),
         )
         if response.text:
@@ -891,6 +893,7 @@ def generate_concept_illustration(
                         system_instruction="You are an expert educational graphic designer and illustrator. Generate clean, valid, standalone SVG diagrams.",
                         temperature=0.2,
                         max_output_tokens=8192,
+                        thinking_config=types.ThinkingConfig(thinking_level="minimal"),
                     ),
                 )
                 text = response.text or ""

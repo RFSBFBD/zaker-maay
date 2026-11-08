@@ -232,6 +232,26 @@ export function SubjectFlashcards({ subjectId }: { subjectId: string }) {
             </div>
           )}
 
+          {activeArtifact?.cached && (
+            <div
+              style={{
+                padding: '6px 14px',
+                borderRadius: 20,
+                background: 'rgba(45, 106, 79, 0.08)',
+                border: '1px solid var(--green, #2d6a4f)',
+                fontSize: 12,
+                color: 'var(--green, #2d6a4f)',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span>⚡</span>
+              <span>حزمة بطاقات محفوظة مسبقاً لمصادر المادة الحالية.</span>
+            </div>
+          )}
+
           {/* Progress Counter */}
           <div
             style={{

@@ -6,7 +6,7 @@ import logging
 import re
 import tempfile
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -190,7 +190,7 @@ def get_cloudinary_upload_params(
 
     public_id = f"study-platform/{subject_id}/{uuid4().hex}{PurePosixPath(file_name).suffix}"
     params = {
-        "timestamp": int(datetime.utcnow().timestamp()),
+        "timestamp": int(datetime.now(timezone.utc).timestamp()),
         "public_id": public_id,
         "resource_type": resource_type,
     }

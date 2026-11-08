@@ -260,8 +260,8 @@ def chat_with_context(
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=config.temperature,
-                max_output_tokens=config.max_output_tokens,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                max_output_tokens=max(config.max_output_tokens, 2048),
+                thinking_config=types.ThinkingConfig(thinking_level="minimal"),
             ),
         )
         answer = response.text
@@ -380,6 +380,35 @@ def get_thread_messages(
         )
         for m in messages
     ]
+
+
+@router.patch("/threads/{thread_id}/pin", response_model=ThreadResponse)
+def toggle_thread_pin(
+    subject_id: UUID,
+    thread_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> ThreadResponse:
+    """Toggle pin status of a chat thread."""
+    _accessible_subject(db, subject_id, profile)
+    thread = db.get(ChatThread, thread_id)
+    if not thread or thread.student_id != profile.id or thread.subject_id != subject_id:
+        raise HTTPException(status_code=404, detail="جلسة المحادثة غير موجودة.")
+    thread.is_pinned = not thread.is_pinned
+    db.commit()
+    db.refresh(thread)
+    msg_count = db.scalar(
+        select(func.count(DBChatMessage.id)).where(DBChatMessage.thread_id == thread.id)
+    ) or 0
+    return ThreadResponse(
+        id=thread.id,
+        subject_id=thread.subject_id,
+        title=thread.title,
+        is_pinned=thread.is_pinned,
+        created_at=thread.created_at.isoformat(),
+        updated_at=thread.updated_at.isoformat(),
+        messages_count=msg_count,
+    )
 
 
 @router.delete("/threads/{thread_id}")

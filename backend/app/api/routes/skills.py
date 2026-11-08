@@ -144,7 +144,7 @@ def ingest_github_skill(
     skill = AgentSkill(
         id=uuid4(),
         title=title[:200],
-        source_github_url=payload.url[:512],
+        source_github_url=payload.target_url[:512] if payload.target_url else None,
         system_instructions=content,
         skill_type=payload.skill_type,
         is_active=True,

@@ -31,3 +31,4 @@ coverage/
 # Local uploads / logs
 uploads/
 *.log
+frontend/e2e/screenshots/
