@@ -664,8 +664,7 @@ function FullScreenChat({
                   >
                     <AlertCircleIcon size={16} style={{ color: "var(--orange)", flexShrink: 0 }} />
                     <span style={{ flex: 1 }}>
-                      <strong>تنبيه:</strong> هذا السؤال لم يُذكر في مراجع المادة، وتم إرساله إلى إدارة المادة لمراجعته
-                      والرد عليك في الإشعارات.
+                      <strong>استفسار تنظيمي:</strong> أُرسل هذا الاستفسار لإدارة المادة للمتابعة.
                     </span>
                     <Link
                       href="/dashboard?tab=inquiries"
