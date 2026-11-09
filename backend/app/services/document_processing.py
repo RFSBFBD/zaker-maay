@@ -11,7 +11,7 @@ MAX_PAGES = 500
 MAX_EXTRACTED_CHARACTERS = 500_000
 CHUNK_SIZE = 1_200
 CHUNK_OVERLAP = 180
-SUPPORTED_TEXT_EXTENSIONS = {".pdf", ".txt", ".docx"}
+SUPPORTED_TEXT_EXTENSIONS = {".pdf", ".txt", ".docx", ".pptx", ".ppt"}
 
 
 @dataclass(frozen=True)

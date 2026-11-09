@@ -36,6 +36,8 @@ ALLOWED_TYPES: dict[str, tuple[str, str]] = {
     ".pdf": ("application/pdf", "raw"),
     ".txt": ("text/plain", "raw"),
     ".docx": ("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "raw"),
+    ".pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "raw"),
+    ".ppt": ("application/vnd.ms-powerpoint", "raw"),
     ".mp3": ("audio/mpeg", "video"),
     ".wav": ("audio/wav", "video"),
     ".m4a": ("audio/mp4", "video"),
