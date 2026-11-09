@@ -11,6 +11,12 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.services.adaptive_engine import (
+    analyze_educational_request,
+    build_adaptive_system_instruction,
+    generate_adaptive_svg,
+    sanitize_and_verify_adaptive_output,
+)
 from app.services.ai_router import ResolvedAIConfig, resolve_ai_config
 from app.services.retrieval import RetrievedPassage
 
@@ -161,16 +167,16 @@ def generate_grounded_answer(
             http_options=types.HttpOptions(timeout=25_000),
         )
         logger.info("[chat_qa] Starting Gemini generate_content: model=%s", ai_cfg.model_name)
-        default_instruction = (
-            "You are a brilliant, logical, and encouraging academic mentor on the 'Zaker Maay' educational platform. "
-            "Think through concepts from first principles with deep logic and intuitive clarity. "
-            "Never simply copy-paste raw excerpts; explain the underlying intuition, use clear real-world analogies, and break complex topics into logical steps. "
-            "If relevant subject excerpts are provided, cite them with [S1], [S2] to ground your explanations. "
-            "If the student asks about general academic, mathematical, or computer science concepts (e.g., OOP, algorithms, calculus, logic), "
-            "provide a comprehensive, masterclass explanation with clear examples or code snippets. "
-            "Always respond in natural, engaging, and professional Arabic."
+        complexity, archetype, wants_visual = analyze_educational_request(question)
+        adaptive_instruction = build_adaptive_system_instruction(
+            complexity=complexity,
+            archetype=archetype,
+            wants_visual=wants_visual,
         )
-        system_instruction = system_prompt.strip() if system_prompt and system_prompt.strip() else default_instruction
+        if system_prompt and system_prompt.strip():
+            system_instruction = f"{system_prompt.strip()}\n\n{adaptive_instruction}"
+        else:
+            system_instruction = adaptive_instruction
         response = client.models.generate_content(
             model=ai_cfg.model_name,
             contents=f"Question:\n{question}\n\nSource excerpts:\n{sources}",
@@ -185,7 +191,7 @@ def generate_grounded_answer(
         answer = response.text
         if not answer or not answer.strip():
             raise GeminiRequestFailed
-        return answer.strip()
+        return sanitize_and_verify_adaptive_output(answer)
     except GeminiRequestFailed:
         raise
     except Exception as exc:
@@ -207,7 +213,7 @@ def generate_grounded_answer(
                         ),
                     )
                     if fb_resp.text and fb_resp.text.strip():
-                        return fb_resp.text.strip()
+                        return sanitize_and_verify_adaptive_output(fb_resp.text)
                 except Exception:
                     continue
             raise GeminiRateLimited from None
@@ -778,13 +784,13 @@ def generate_follow_up_suggestions(
             client.close()
 
 
-def _analyze_visual_domain_and_palette(prompt: str, context: str) -> dict[str, Any]:
+def _analyze_visual_domain_and_palette(prompt: str, context: str, subject_title: str | None = None) -> dict[str, Any]:
     """Analyze the domain and construct a semantic, scalable color palette and layout strategy."""
-    combined = f"{prompt} {context}".lower()
+    combined = f"{subject_title or ''} {prompt} {context}".lower()
 
     prog_keywords = [
         "code", "برمج", "class", "كلاس", "object", "دالة", "function", "oop", "pointer", "مؤشر",
-        "ذاكر", "memory", "stack", "heap", "constructor", "منشئ", "array", "مصفوفة", "c++",
+        "ذاكرة", "ذاكره", "memory", "stack", "heap", "constructor", "منشئ", "array", "مصفوفة", "c++",
         "python", "java", "sql", "خوارزم", "algorithm", "variable", "متغير", "loop", "حلقة",
     ]
     net_keywords = [
@@ -794,13 +800,35 @@ def _analyze_visual_domain_and_palette(prompt: str, context: str) -> dict[str, A
     ]
     math_keywords = [
         "رياضيات", "math", "معادل", "equation", "تكامل", "integral", "اشتقاق", "derivative",
-        "matrix", "مصفوف", "احتمال", "probability", "إحصاء", "statistics", "vector", "متجه",
+        "matrix", "مصفوف", "احتمال", "احتمالات", "probability", "إحصاء", "احصاء", "statistics", "vector", "متجه",
+        "توزيع", "distribution", "تباين", "variance", "انحراف", "عشوائي", "random", "بيز", "bayes",
         "ai", "ذكاء", "نموذج", "loss", "gradient", "دوال", "geometric", "هندسة",
     ]
     bio_keywords = [
         "أحياء", "biology", "خلي", "cell", "dna", "جين", "gene", "طب", "medicine", "عضو", "organ",
         "كيمياء", "chemistry", "فيزياء", "physics", "طاق", "energy", "ذرة", "atom", "تفاعل", "reaction",
     ]
+
+    # Check math/statistics first if subject indicates it
+    if any(k in combined for k in ["احتمال", "احصاء", "إحصاء", "statistics", "probability", "رياضيات", "math"]):
+        return {
+            "domain": "mathematics_ai",
+            "domain_label": "الاحتمالات والإحصاء والرياضيات التطبيقية",
+            "palette_name": "Modern Indigo, Cyan & Gold",
+            "colors": {
+                "bg": "#0b0f19",
+                "card_bg": "#131b2e",
+                "card_border": "#243356",
+                "primary": "#6366f1",     # Indigo: Distributions & Random Variables
+                "secondary": "#06b6d4",   # Cyan: Probability Density & Cumulative Functions
+                "accent": "#eab308",      # Gold: Parameters (Mean, Variance, Lambda)
+                "success": "#22c55e",     # Emerald: Valid Probability Sum / Verified Law
+                "warning": "#f43f5e",     # Rose: Boundary Limits (0 <= P <= 1)
+                "text_primary": "#f8fafc",
+                "text_muted": "#94a3b8",
+            },
+            "layout_advice": "عرض منحنى أو دالة التوزيع الاحتمالي، تفكيك المتغير العشوائي، القوانين الرياضية الأساسية، مع تطبيق عددي مباشر.",
+        }
 
     if any(k in combined for k in prog_keywords):
         return {
@@ -902,6 +930,7 @@ def _analyze_visual_domain_and_palette(prompt: str, context: str) -> dict[str, A
 def generate_concept_illustration(
     prompt: str,
     context: str = "",
+    subject_title: str | None = None,
     *,
     db: Session | None = None,
     _ai_config: ResolvedAIConfig | None = None,
@@ -923,7 +952,7 @@ def generate_concept_illustration(
     if not ai_cfg.api_key:
         raise GeminiNotConfigured
 
-    domain_meta = _analyze_visual_domain_and_palette(prompt, context)
+    domain_meta = _analyze_visual_domain_and_palette(prompt, context, subject_title=subject_title)
     colors = domain_meta["colors"]
     domain_label = domain_meta["domain_label"]
     palette_name = domain_meta["palette_name"]
@@ -1014,14 +1043,28 @@ def generate_concept_illustration(
             except Exception as img_exc:
                 logger.warning("Imagen generation failed: %s. Attempting fallback to Smart SVG.", img_exc)
 
-        # Determine topic name
-        topic = prompt.strip()
-        generic_phrases = ["عايز اعمل صوره توضيحيه", "عايز صوره توضيحيه", "عايز صوره", "اعملي صوره", "رسم توضيحي", "صوره توضيحيه", "ارسم لي", "ارسم صوره"]
-        if any(topic.lower() == g for g in generic_phrases) or (len(topic) < 25 and any(p in topic for p in ["صوره", "صورة", "رسم", "مخطط"])):
-            if context and len(context) > 20:
-                topic = f"مخطط مفاهيمي لدروس ومفاهيم المادة ({prompt})"
+        # Determine topic name cleanly
+        raw_topic = prompt.strip()
+        conversational_noise_patterns = [
+            r"^(طيب\s+)?(ممكن\s+)?(تشوف\s+)?(المحتوي|المحتوى)\s+(الموجود\s+)?(عندك\s+)?(و\s+)?(تبدأ\s+)?(تشرحه\s+)?(لي\s+)?(وياريت\s+)?(لو\s+)?(عملت\s+)?(لي\s+)?(صوره\s+توضيحيه|صورة\s+توضيحية|رسم\s+توضيحي)\s*(لـ|للمحتوى|للمحتوي|ده)?",
+            r"^(عايز|أريد|اريد|اعملي|صمم\s+لي|ارسم\s+لي|ممكن)\s+(صورة|صوره|رسم|مخطط)\s+(توضيحية|توضيحي|بياني|مفاهيمي)?\s*(لـ|عن)?",
+            r"(صوره\s+توضيحيه|صورة\s+توضيحية|رسم\s+توضيحي|مخطط\s+مفاهيمي)",
+        ]
+        clean_topic = raw_topic
+        for pat in conversational_noise_patterns:
+            clean_topic = re.sub(pat, "", clean_topic, flags=re.IGNORECASE).strip()
+
+        generic_words = {"ده", "الموجود", "المحتوى", "المحتوي", "الماده", "المادة", "الدرس", "الموضوع", "هنا", "عندك", "شرح"}
+        topic_words = set(re.findall(r"[\w]+", clean_topic.lower()))
+        if not clean_topic or len(clean_topic) < 3 or topic_words.issubset(generic_words):
+            if subject_title:
+                topic = f"المفاهيم الأساسية لمادة {subject_title}"
+            elif context and len(context) > 20:
+                topic = "المفاهيم الأساسية للمادة الدراسية"
             else:
-                topic = f"مخطط توضيحي للمادة ({prompt})"
+                topic = "مخطط مفاهيمي دلالي"
+        else:
+            topic = clean_topic
 
         # 3. Dynamic Semantic SVG Generator
         svg_designer_prompt = (
@@ -1104,88 +1147,9 @@ def generate_concept_illustration(
                 "description": f"رسم ومخطط بياني ذكي لـ: {topic}",
             }
 
-        # 4. Rich Dynamic Fallback SVG using the detected domain palette and semantic cards
-        safe_topic = topic.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
-        fallback_svg = (
-            f"<svg viewBox='0 0 1000 620' xmlns='http://www.w3.org/2000/svg' dir='rtl'>"
-            f"<defs>"
-            f"  <filter id='dropShadow' x='-10%' y='-10%' width='130%' height='130%'>"
-            f"    <feDropShadow dx='0' dy='6' stdDeviation='8' flood-color='#000000' flood-opacity='0.4'/>"
-            f"  </filter>"
-            f"  <marker id='arrow' markerWidth='10' markerHeight='10' refX='6' refY='3' orient='auto'>"
-            f"    <path d='M0,0 L0,6 L9,3 z' fill='{colors['accent']}' />"
-            f"  </marker>"
-            f"</defs>"
-            f"<rect width='1000' height='620' rx='16' fill='{colors['bg']}'/>"
-            f"<!-- Header Bar -->"
-            f"<rect x='30' y='25' width='940' height='75' rx='12' fill='{colors['card_bg']}' stroke='{colors['card_border']}' stroke-width='1.5'/>"
-            f"<rect x='50' y='42' width='120' height='28' rx='6' fill='{colors['primary']}' fill-opacity='0.2'/>"
-            f"<text x='110' y='61' text-anchor='middle' font-family='sans-serif' font-size='13' font-weight='bold' fill='{colors['primary']}'>{domain_label}</text>"
-            f"<text x='500' y='58' text-anchor='middle' font-family='sans-serif' font-size='22' font-weight='bold' fill='{colors['text_primary']}'>{safe_topic}</text>"
-            f"<text x='500' y='82' text-anchor='middle' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>مخطط مفاهيمي دلالي يوضح البنية، مسار العمل، وأمثلة التطبيق</text>"
-            f"<!-- Card 1: Core Concept -->"
-            f"<g filter='url(#dropShadow)'>"
-            f"  <rect x='40' y='130' width='285' height='260' rx='14' fill='{colors['card_bg']}' stroke='{colors['primary']}' stroke-width='2'/>"
-            f"  <rect x='40' y='130' width='285' height='40' rx='14' fill='{colors['primary']}' fill-opacity='0.15'/>"
-            f"  <text x='182' y='156' text-anchor='middle' font-family='sans-serif' font-size='16' font-weight='bold' fill='{colors['primary']}'>📌 المفهوم والتعريف الأساسي</text>"
-            f"  <text x='295' y='200' text-anchor='end' font-family='sans-serif' font-size='14' fill='{colors['text_primary']}'>القاعدة والأساس العلمي:</text>"
-            f"  <text x='295' y='230' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تحديد الهيكل والخصائص الجوهرية</text>"
-            f"  <text x='295' y='260' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• قواعد البناء والتهيئة الصحيحة</text>"
-            f"  <text x='295' y='290' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تمثيل الكيان والمخطط النظري</text>"
-            f"  <rect x='60' y='330' width='245' height='36' rx='8' fill='{colors['primary']}' fill-opacity='0.2'/>"
-            f"  <text x='182' y='353' text-anchor='middle' font-family='sans-serif' font-size='13' font-weight='bold' fill='{colors['primary']}'>✓ المرجع والمخطط الأصلي</text>"
-            f"</g>"
-            f"<!-- Arrow 1 to 2 -->"
-            f"<path d='M335 260 L365 260' stroke='{colors['accent']}' stroke-width='3' marker-end='url(#arrow)'/>"
-            f"<!-- Card 2: Mechanism / Flow -->"
-            f"<g filter='url(#dropShadow)'>"
-            f"  <rect x='375' y='130' width='285' height='260' rx='14' fill='{colors['card_bg']}' stroke='{colors['secondary']}' stroke-width='2'/>"
-            f"  <rect x='375' y='130' width='285' height='40' rx='14' fill='{colors['secondary']}' fill-opacity='0.15'/>"
-            f"  <text x='517' y='156' text-anchor='middle' font-family='sans-serif' font-size='16' font-weight='bold' fill='{colors['secondary']}'>⚙️ آلية التنفيذ ومسار البيانات</text>"
-            f"  <text x='630' y='200' text-anchor='end' font-family='sans-serif' font-size='14' fill='{colors['text_primary']}'>مراحل التحويل والمعالجة:</text>"
-            f"  <text x='630' y='230' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تخصيص الموارد وحجز الذاكرة</text>"
-            f"  <text x='630' y='260' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تمرير المعاملات والمتغيرات</text>"
-            f"  <text x='630' y='290' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• إدارة الحالة ودورة الحياة</text>"
-            f"  <rect x='395' y='330' width='245' height='36' rx='8' fill='{colors['secondary']}' fill-opacity='0.2'/>"
-            f"  <text x='517' y='353' text-anchor='middle' font-family='sans-serif' font-size='13' font-weight='bold' fill='{colors['secondary']}'>⚡ المعالجة النشطة في الذاكرة</text>"
-            f"</g>"
-            f"<!-- Arrow 2 to 3 -->"
-            f"<path d='M670 260 L700 260' stroke='{colors['accent']}' stroke-width='3' marker-end='url(#arrow)'/>"
-            f"<!-- Card 3: Example & Output -->"
-            f"<g filter='url(#dropShadow)'>"
-            f"  <rect x='710' y='130' width='250' height='260' rx='14' fill='{colors['card_bg']}' stroke='{colors['success']}' stroke-width='2'/>"
-            f"  <rect x='710' y='130' width='250' height='40' rx='14' fill='{colors['success']}' fill-opacity='0.15'/>"
-            f"  <text x='835' y='156' text-anchor='middle' font-family='sans-serif' font-size='16' font-weight='bold' fill='{colors['success']}'>🎯 النتيجة والتطبيق العملي</text>"
-            f"  <text x='930' y='200' text-anchor='end' font-family='sans-serif' font-size='14' fill='{colors['text_primary']}'>المخرجات المتوقعة:</text>"
-            f"  <text x='930' y='230' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تنفيذ صحيح وخالٍ من الأخطاء</text>"
-            f"  <text x='930' y='260' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• استجابة فورية وحالة مستقرة</text>"
-            f"  <text x='930' y='290' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• قيمة مسترجعة قابلة للاستخدام</text>"
-            f"  <rect x='725' y='330' width='220' height='36' rx='8' fill='{colors['success']}' fill-opacity='0.2'/>"
-            f"  <text x='835' y='353' text-anchor='middle' font-family='sans-serif' font-size='13' font-weight='bold' fill='{colors['success']}'>✓ نجاح العملية بنسبة 100%</text>"
-            f"</g>"
-            f"<!-- Bottom Cards: Best Practice & Warning Alert -->"
-            f"<g filter='url(#dropShadow)'>"
-            f"  <rect x='40' y='420' width='445' height='170' rx='14' fill='{colors['card_bg']}' stroke='{colors['accent']}' stroke-width='1.5'/>"
-            f"  <text x='455' y='455' text-anchor='end' font-family='sans-serif' font-size='16' font-weight='bold' fill='{colors['accent']}'>💡 أفضل الممارسات والتوصيات الهندسية</text>"
-            f"  <text x='455' y='490' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تأكد من وضوح تعريف المعاملات لتجنب الغموض في التنفيذ.</text>"
-            f"  <text x='455' y='520' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• افصل بين منطق الحسابات وإدارة الحالة لتحقيق أعلى درجات الاستقرار.</text>"
-            f"  <text x='455' y='550' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• استخدم النماذج المعيارية لضمان قابلية التوسع والصيانة المستمرة.</text>"
-            f"</g>"
-            f"<g filter='url(#dropShadow)'>"
-            f"  <rect x='515' y='420' width='445' height='170' rx='14' fill='{colors['card_bg']}' stroke='{colors['warning']}' stroke-width='1.5'/>"
-            f"  <text x='930' y='455' text-anchor='end' font-family='sans-serif' font-size='16' font-weight='bold' fill='{colors['warning']}'>⚠️ أخطاء شائعة وتحذيرات هامة</text>"
-            f"  <text x='930' y='490' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• تجنب تعديل الحالة بشكل غير متزامن دون مزامنة الموارد.</text>"
-            f"  <text x='930' y='520' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• احذر من تجاوز الحدود التخزينية أو عدم التحقق من القيم الفارغة (Null).</text>"
-            f"  <text x='930' y='550' text-anchor='end' font-family='sans-serif' font-size='13' fill='{colors['text_muted']}'>• لا تهمل معالجة الاستثناءات ومسارات الفشل عند نقاط الاتصال الحرجة.</text>"
-            f"</g>"
-            f"</svg>"
-        )
-        return {
-            "type": "svg",
-            "svg": fallback_svg,
-            "title": topic,
-            "description": f"مخطط مفاهيمي دلالي: {topic}",
-        }
+        # 4. Content-Synchronized Adaptive SVG Generator
+        _, archetype, _ = analyze_educational_request(f"{subject_title or ''} {topic}")
+        return generate_adaptive_svg(topic=topic, archetype=archetype, context=context)
     except Exception as exc:
         logger.warning("Illustration generation unexpected error: %s", exc)
         safe_prompt = prompt.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")

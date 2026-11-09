@@ -61,12 +61,22 @@ class UploadBodyLimitMiddleware:
         receive: Callable[..., Awaitable[dict[str, Any]]],
         send: Callable[..., Awaitable[None]],
     ) -> None:
-        body = json.dumps({"detail": "Upload request exceeds the 100 MiB file limit."}).encode("utf-8")
+        body = json.dumps({"detail": "حجم الملف المرفوع يتجاوز الحد الأقصى المسموح به (100 ميغابايت)."}).encode("utf-8")
+        headers_dict = {key.lower(): value for key, value in scope.get("headers", [])}
+        origin = headers_dict.get(b"origin", b"*")
+        response_headers = [
+            (b"content-type", b"application/json; charset=utf-8"),
+            (b"content-length", str(len(body)).encode()),
+            (b"access-control-allow-origin", origin),
+            (b"access-control-allow-credentials", b"true"),
+            (b"access-control-allow-methods", b"GET, POST, OPTIONS, PUT, DELETE"),
+            (b"access-control-allow-headers", b"*"),
+        ]
         await send(
             {
                 "type": "http.response.start",
                 "status": 413,
-                "headers": [(b"content-type", b"application/json; charset=utf-8"), (b"content-length", str(len(body)).encode())],
+                "headers": response_headers,
             }
         )
         await send({"type": "http.response.body", "body": body})

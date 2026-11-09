@@ -75,6 +75,7 @@ def build_plan(intents: list[str], **kwargs: Any) -> list[PlanStep]:
                 kwargs={
                     "prompt": kwargs.get("message", ""),
                     "context": kwargs.get("context", ""),
+                    "subject_title": kwargs.get("subject_title", ""),
                 },
             ))
         elif intent == "quiz_generation":
@@ -207,6 +208,7 @@ def orchestrate_chat(
     passages: list | None = None,
     system_prompt: str | None = None,
     context: str | None = None,
+    subject_title: str | None = None,
 ) -> OrchestratorResult:
     """Orchestrate a chat request: classify intent, build plan, execute steps."""
     intents = classify_intent(message)
@@ -216,6 +218,7 @@ def orchestrate_chat(
         passages=passages or [],
         system_prompt=system_prompt,
         context=context or "",
+        subject_title=subject_title or "",
     )
 
     plan_json = json.dumps([

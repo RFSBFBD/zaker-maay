@@ -392,3 +392,48 @@ def test_process_gemini_file_handles_document(
     data = res.json()
     assert data["file_name"] == "computer_science_book.pdf"
     assert data["size_bytes"] == 35000000
+
+
+def test_cloudinary_upload_params_excludes_resource_type_from_signed_params(
+    resource_client: tuple[TestClient, Session, UserProfile, Subject], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from unittest.mock import MagicMock
+    from app.core.config import Settings
+    client, session, user, subject = resource_client
+
+    # Ensure Cloudinary settings are present
+    monkeypatch.setattr(
+        "app.api.routes.resources.get_settings",
+        lambda: Settings(
+            cloudinary_cloud_name="test_cloud",
+            cloudinary_api_key="test_key",
+            cloudinary_api_secret="test_secret",
+            database_url="sqlite://",
+            jwt_secret="secret",
+            groq_api_key="dummy_groq",
+            ai_platform="groq",
+            ai_model="llama-3.3-70b-versatile",
+            gemini_api_key="dummy_gemini",
+        ),
+    )
+
+    signed_params_captured: dict = {}
+    from cloudinary import utils as cu
+
+    def mock_sign(params, secret):
+        signed_params_captured.update(params)
+        return "mocked_signature_hash"
+
+    monkeypatch.setattr(cu, "api_sign_request", mock_sign)
+
+    res = client.get(
+        f"/api/v1/subjects/{subject.id}/resources/upload-params?file_name=file.pdf&resource_type=raw"
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["signature"] == "mocked_signature_hash"
+    assert data["resource_type"] == "raw"
+    assert "resource_type" not in signed_params_captured, "resource_type must NOT be included in Cloudinary signed params"
+    assert "public_id" in signed_params_captured
+    assert "timestamp" in signed_params_captured
+

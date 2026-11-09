@@ -189,16 +189,15 @@ def get_cloudinary_upload_params(
         raise HTTPException(status_code=503, detail="تخزين السحابة غير مهيأ.")
 
     public_id = f"study-platform/{subject_id}/{uuid4().hex}{PurePosixPath(file_name).suffix}"
-    params = {
+    params_to_sign = {
         "timestamp": int(datetime.now(timezone.utc).timestamp()),
         "public_id": public_id,
-        "resource_type": resource_type,
     }
-    signature = cu.api_sign_request(params, settings.cloudinary_api_secret)
+    signature = cu.api_sign_request(params_to_sign, settings.cloudinary_api_secret)
     return {
         "cloud_name": settings.cloudinary_cloud_name,
         "api_key": settings.cloudinary_api_key,
-        "timestamp": str(params["timestamp"]),
+        "timestamp": str(params_to_sign["timestamp"]),
         "public_id": public_id,
         "resource_type": resource_type,
         "signature": signature,

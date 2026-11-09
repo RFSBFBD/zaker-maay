@@ -9,6 +9,7 @@ import { SubjectLibrary } from "@/components/subject-library";
 import { AppHeader } from "@/components/app-header";
 import { SubjectQuizzes } from "@/components/subject-quizzes";
 import { SubjectFlashcards } from "@/components/subject-flashcards";
+import { AdaptiveContentRenderer } from "@/components/adaptive-content-renderer";
 import {
   ChatIcon,
   BookOpenIcon,
@@ -974,8 +975,12 @@ function FullScreenChat({
                   </div>
                 )}
 
-                {/* Main Message Text */}
-                <p style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{msg.content}</p>
+                {/* Main Message Text (Adaptive Content Renderer for Assistant, Clean Text for User) */}
+                {msg.role === "assistant" ? (
+                  <AdaptiveContentRenderer content={msg.content} />
+                ) : (
+                  <p style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{msg.content}</p>
+                )}
 
                 {/* If no resources: Button to switch to library */}
                 {msg.no_resources && (

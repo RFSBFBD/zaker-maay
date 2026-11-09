@@ -149,46 +149,133 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
       const isAudio =
         file.type.startsWith("audio/") ||
         /\.(mp3|wav|m4a|ogg|webm|aac|flac|mp4)$/i.test(file.name);
+      const isDocument =
+        file.type.startsWith("application/pdf") ||
+        file.type.startsWith("text/") ||
+        /\.(pdf|docx|txt|md|csv)$/i.test(file.name);
 
-      // Direct upload to Gemini for ALL audio files, or any document > 18 MiB
-      // This completely bypasses Cloudinary's 20 MiB limit on free plans!
-      const isLargeDocument = file.size > 18 * 1024 * 1024;
-      const useGeminiDirect = isAudio || isLargeDocument;
+      // Direct upload to Gemini for ALL documents and audio files up to 100 MiB!
+      // This completely bypasses Vercel's 4.5MB serverless limit and Cloudinary storage/signature limits!
+      const useGeminiDirect = isAudio || isDocument;
 
       if (useGeminiDirect) {
         setNotice(
           isAudio
-            ? "جارٍ رفع التسجيل الصوتي والتفريغ النصي الذكي عبر الخادم مباشرة…"
-            : "جارٍ رفع ومعالجة الملف الكبير واستخراج المحتوى العلمي وفهرسته…"
+            ? "جارٍ تهيئة الرفع المباشر للتسجيل الصوتي والتفريغ الذكي…"
+            : "جارٍ تهيئة الرفع المباشر للكتاب/المستند واستخراج المحتوى بالذكاء الاصطناعي…"
         );
 
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const directHeaders: Record<string, string> = {};
-        if (headers.Authorization) {
-          directHeaders.Authorization = headers.Authorization;
+        let mimeType = file.type;
+        if (!mimeType || mimeType === "application/octet-stream") {
+          const ext = file.name.split(".").pop()?.toLowerCase();
+          if (ext === "pdf") mimeType = "application/pdf";
+          else if (ext === "docx") mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+          else if (ext === "txt") mimeType = "text/plain";
+          else if (ext === "mp3") mimeType = "audio/mpeg";
+          else if (ext === "wav") mimeType = "audio/wav";
+          else if (ext === "m4a") mimeType = "audio/mp4";
+          else mimeType = "application/octet-stream";
         }
 
-        const created = await apiRequest<Resource>(
-          `/api/v1/subjects/${subjectId}/resources/upload-direct`,
-          {
-            method: "POST",
-            headers: directHeaders,
-            body: formData,
-          },
-          180_000
-        );
+        try {
+          // 1. Get Google Gemini Resumable Upload URL (0 bytes transferred through Vercel)
+          const uploadUrlData = await apiRequest<{ upload_url: string }>(
+            `/api/v1/subjects/${subjectId}/resources/gemini-upload-url?file_name=${encodeURIComponent(file.name)}&file_size=${file.size}&mime_type=${encodeURIComponent(mimeType)}`,
+            {
+              method: "POST",
+              headers,
+            }
+          );
 
-        setResources((current) => [created, ...current]);
-        form.reset();
-        setTranscribeAudio(false);
-        setNotice(
-          isAudio
-            ? "تم تفريغ المحاضرة الصوتية بنجاح وإضافتها كمرجع دراسي يعتمد عليه المساعد الذكي!"
-            : "تمت معالجة الكتاب/الملف وفهرسته بنجاح داخل مكتبة المادة!"
-        );
-        return;
+          if (!uploadUrlData?.upload_url) {
+            throw new Error("تعذر إنشاء رابط الرفع المباشر.");
+          }
+
+          setNotice(
+            isAudio
+              ? "جارٍ رفع التسجيل الصوتي مباشرة إلى خوادم المعالجة الذكية…"
+              : "جارٍ رفع الكتاب/الملف مباشرة إلى خوادم المعالجة الذكية…"
+          );
+
+          // 2. Stream binary directly from Browser -> Google Gemini (bypassing Vercel 4.5MB limit)
+          const googleResp = await fetch(uploadUrlData.upload_url, {
+            method: "POST",
+            headers: {
+              "X-Goog-Upload-Offset": "0",
+              "X-Goog-Upload-Command": "upload, finalize",
+            },
+            body: file,
+          });
+
+          if (!googleResp.ok) {
+            const errBody = await googleResp.text().catch(() => "");
+            throw new Error(`تعذر الرفع المباشر (${googleResp.status}): ${errBody || "تحقق من اتصالك بالإنترنت"}`);
+          }
+
+          const googleJson = await googleResp.json();
+          const geminiFileName = googleJson.file?.name;
+          if (!geminiFileName) {
+            throw new Error("لم يتم استلام معرّف الملف من خدمة المعالجة.");
+          }
+
+          setNotice(
+            isAudio
+              ? "اكتمل الرفع! جارٍ تفريغ المحاضرة وفهرستها كمرجع دراسي يعتمد عليه المساعد الذكي…"
+              : "اكتمل الرفع! جارٍ استخراج المحتوى العلمي وفهرسة الصفحات في مكتبة المادة…"
+          );
+
+          // 3. Inform backend to extract text/transcribe and store indexed chunks
+          const created = await apiRequest<Resource>(
+            `/api/v1/subjects/${subjectId}/resources/process-audio-transcript`,
+            {
+              method: "POST",
+              headers: { ...headers, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                gemini_file_name: geminiFileName,
+                file_name: file.name,
+                size_bytes: file.size,
+                mime_type: mimeType,
+              }),
+            },
+            180_000
+          );
+
+          setResources((current) => [created, ...current]);
+          form.reset();
+          setTranscribeAudio(false);
+          setNotice(
+            isAudio
+              ? "تم تفريغ المحاضرة الصوتية بنجاح وإضافتها كمرجع دراسي يعتمد عليه المساعد الذكي!"
+              : "تمت معالجة الكتاب/الملف وفهرسته بنجاح داخل مكتبة المادة!"
+          );
+          return;
+        } catch (geminiErr) {
+          console.warn("Direct upload to Gemini failed, attempting server fallback:", geminiErr);
+          // If Gemini direct upload fails (e.g. adblocker), fallback to direct upload endpoint
+          const formData = new FormData();
+          formData.append("file", file);
+
+          const directHeaders: Record<string, string> = {};
+          if (headers.Authorization) {
+            directHeaders.Authorization = headers.Authorization;
+          }
+
+          const created = await apiRequest<Resource>(
+            `/api/v1/subjects/${subjectId}/resources/upload-direct`,
+            {
+              method: "POST",
+              headers: directHeaders,
+              body: formData,
+            },
+            180_000
+          );
+
+          setResources((current) => [created, ...current]);
+          form.reset();
+          setTranscribeAudio(false);
+          setNotice("تم رفع الملف ومعالجته بنجاح داخل مكتبة المادة!");
+          return;
+        }
       }
 
       // 1. Get signed upload params from backend for documents
@@ -204,7 +291,6 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
       cloudFormData.append("timestamp", params.timestamp);
       cloudFormData.append("signature", params.signature);
       cloudFormData.append("public_id", params.public_id);
-      cloudFormData.append("resource_type", params.resource_type);
 
       const cloudinaryResp = await fetch(
         `https://api.cloudinary.com/v1_1/${params.cloud_name}/${params.resource_type}/upload`,

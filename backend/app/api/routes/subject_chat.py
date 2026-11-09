@@ -25,6 +25,11 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.services.ai_router import ResolvedAIConfig, resolve_ai_config
+from app.services.adaptive_engine import (
+    analyze_educational_request,
+    build_adaptive_system_instruction,
+    sanitize_and_verify_adaptive_output,
+)
 from app.services import gemini as gemini_service
 from app.services.orchestrator import orchestrate_chat
 from app.services.retrieval import RetrievedPassage, retrieve_for_subject
@@ -96,39 +101,26 @@ def _skill_label(level: int) -> str:
     return "متقدم"
 
 
-def _build_system_prompt(db: Session, subject_id: UUID, skill_level: int) -> str:
-    """Build a system instruction adapted to student skill level, active GitHub skills, and admin QA."""
-    label = _skill_label(skill_level)
-    base = (
-        "أنت «المساعد الأكاديمي الذكي» على منصة «ذاكر معي» — أستاذ وموجه تعليمي فذ، يعتمد على التفكير المنطقي والبناء الفكري من الجذور (First-Principles Thinking).\n"
-        "هدفك الرئيسي هو أن يفهم الطالب بعمق واستيعاب منطقي حقيقي، وليس مجرد نسخ ولصق نصوص المراجع!\n\n"
-        "## المبادئ الأساسية للشرح والذكاء المنطقي:\n"
-        "1. لا تقم بالنسخ واللصق الحرفي الجاف: استوعب المحتوى العلمي من المراجع المرفوعة، وأعد صياغته وشرحه بأسلوب منطقي سلس مدعوماً بالاستشهاد الدقيق [S1], [S2].\n"
-        "2. ابدأ دائماً بـ «لماذا» (The Intuition & Why): ما هو جوهر الفكرة؟ وما المشكلة الواقعية التي جاء هذا المفهوم ليحلها؟\n"
-        "3. التفكيك المنهجي المنظم: اشرح المفهوم في خطوات منطقية متسلسلة، مع ضرب تشبيهات ذكية وأمثلة من واقع الحياة تجعل الفكرة ملموسة وواضحة فوراً.\n"
-        "4. الشمولية والمرونة العالية (Scalable Intelligence): إذا سأل الطالب عن مفهوم علمي، هندسي، رياضي، تقني أو برمجي (مثل البرمجة كائنية التوجه OOP، هياكل البيانات، المعادلات، الخوارزميات، أو أدوات التحليل)، حتى وإن لم يكن مذكوراً في الملازم الحالية:\n"
-        "   - اشرحه له فوراً بأعلى درجات المنطق والدقة الأكاديمية مع تقديم أمثلة توضيحية أو كود مبسط، ثم وضّح كيف يفيد هذا المفهوم في التفكير التحليلي أو في المادة الدراسية إن أمكن.\n"
-        "   - لا ترفض أي سؤال علمي أو مفاهيمي، ولا تضع عليه وسماً سلبياً أو تنبيهاً إدارياً؛ فكل معرفة علمية هي في صميم رسالتك كمعلم ملهم.\n"
-        "5. متى فقط تستخدم [OUT_OF_SCOPE]؟\n"
-        "   - فقط وفقط إذا سأل الطالب سؤالاً إدارياً بحتاً يخص كليته أو دكتوره شخصياً (مثل: 'متى موعد امتحان الميدتيرم؟'، 'هل تم إلغاء المحاضرة القادمة؟'، 'ما توزيع درجات أعمال السنة للدكتور؟').\n"
-        "   - في هذه الحالة فقط اكتب [OUT_OF_SCOPE] لأن هذا استفسار إداري داخلي يتطلب مراجعة إدارة المادة.\n\n"
+def _build_system_prompt(db: Session, subject_id: UUID, skill_level: int, question: str = "", subject_title: str = "") -> str:
+    """Build an adaptive educational instruction tailored to content complexity and student level."""
+    complexity, archetype, wants_visual = analyze_educational_request(f"{subject_title} {question}", skill_level=skill_level)
+    adaptive_core = build_adaptive_system_instruction(
+        complexity=complexity,
+        archetype=archetype,
+        skill_level=skill_level,
+        wants_visual=wants_visual,
     )
-
-    if skill_level <= 3:
-        base += (
-            f"مستوى استيعاب الطالب: {label} (المستوى {skill_level} من 10). "
-            "استخدم لغة سهلة ومباشرة، وقسّم الشرح لنقاط واضحة، مع ضرب أمثلة واقعية ممتعة. كن مشجعاً وودوداً جداً.\n\n"
-        )
-    elif skill_level <= 6:
-        base += (
-            f"مستوى استيعاب الطالب: {label} (المستوى {skill_level} من 10). "
-            "قدّم شرحاً متوازناً يجمع بين المفهوم التطبيقي والتأصيل النظري، مع تعريف المصطلحات ومقارنتها.\n\n"
-        )
-    else:
-        base += (
-            f"مستوى استيعاب الطالب: {label} (المستوى {skill_level} من 10). "
-            "قدّم تحليلاً عميقاً ودقيقاً ومتقدماً مع التركيز على الروابط المنطقية والاستنتاج العلمي والنقد الموضوعي.\n\n"
-        )
+    subject_context = f"أنت تعمل كمعلم وموجه أكاديمي لمادة: «{subject_title}».\n" if subject_title else ""
+    base = (
+        f"{subject_context}"
+        f"{adaptive_core}\n\n"
+        "## قواعد المراجع والتعامل مع طلبات الطالب:\n"
+        "1. المراجع المرفوعة أدناه في 'المصادر المتاحة' هي الملفات والكتب والمحاضرات المعتمدة للطالب في مكتبة المادة.\n"
+        "2. إذا طلب الطالب شرح المادة، أو شرح الملف الموجود في المكتبة، أو قال 'ابدأ اشرح'، 'لخص لي'، 'معايا امتحانات'، فابدأ فوراً في شرح واستعراض المحتوى العلمي لهذه المادة بالاعتماد على المراجع المتاحة، وقدم تأصيلاً مفاهيمياً منظماً. إياك أن تقول للطالب 'أنت لم ترفق ملفاً في رسالتك'!\n"
+        "3. استوعب المحتوى واشرحه بأسلوب منطقي عميق، واستشهد بالمصادر [S1], [S2] لتوثيق المفاهيم.\n"
+        "4. الشمولية الأكاديمية: أي مفهوم يسأله الطالب داخل نطاق المادة أو العلوم المرتبطة بها اشرحه له مباشرة بدقة ووضوح.\n"
+        "5. متى فقط تستخدم [OUT_OF_SCOPE]؟ فقط وفقط إذا سأل الطالب سؤالاً إدارياً بحتاً يخص كليته أو دكتوره شخصياً (مثل: 'متى موعد امتحان الميدتيرم؟'، 'هل تم إلغاء المحاضرة القادمة؟'، 'ما توزيع درجات أعمال السنة للدكتور؟'). في هذه الحالة فقط اكتب [OUT_OF_SCOPE] لأن هذا استفسار إداري داخلي يتطلب مراجعة إدارة المادة.\n\n"
+    )
 
     # ── Active Ingested GitHub Skills ─────────────────────────────────────
     active_skills = db.scalars(
@@ -160,7 +152,7 @@ def _build_system_prompt(db: Session, subject_id: UUID, skill_level: int) -> str
     return base
 
 
-def _gather_context(db: Session, subject_id: UUID) -> str:
+def _gather_context(db: Session, subject_id: UUID, subject_title: str = "") -> str:
     parts: list[str] = []
     budget = _MAX_CONTEXT_CHARS
 
@@ -168,13 +160,17 @@ def _gather_context(db: Session, subject_id: UUID) -> str:
         select(Resource).where(Resource.subject_id == subject_id)
     ).all()
 
+    if resources:
+        file_list = "، ".join(f"«{r.file_name}»" for r in resources)
+        parts.append(f"المراجع والكتب المتوفرة في مكتبة المادة: {file_list}")
+
     for res_index, resource in enumerate(resources, start=1):
         if budget <= 0:
             break
 
         if resource.transcript_text:
             header = f"[S{res_index}] ملف: {resource.file_name} (نص مُفرَّغ)"
-            snippet = resource.transcript_text[:3_000]
+            snippet = resource.transcript_text[:4_000]
             block = f"{header}\n{snippet}"
             parts.append(block)
             budget -= len(block)
@@ -184,7 +180,7 @@ def _gather_context(db: Session, subject_id: UUID) -> str:
             select(ResourceChunk)
             .where(ResourceChunk.resource_id == resource.id)
             .order_by(ResourceChunk.chunk_index)
-            .limit(6)
+            .limit(10)
         ).all()
 
         if chunks:
@@ -198,7 +194,7 @@ def _gather_context(db: Session, subject_id: UUID) -> str:
             parts.append(block)
             budget -= len(block)
         else:
-            parts.append(f"[S{res_index}] ملف: {resource.file_name} (لا يوجد محتوى نصي)")
+            parts.append(f"[S{res_index}] ملف: {resource.file_name} (مرجع متاح في المكتبة)")
 
     yt_links = db.scalars(
         select(YouTubeLink).where(YouTubeLink.subject_id == subject_id)
@@ -226,7 +222,7 @@ def _format_retrieved_context(passages: list[RetrievedPassage]) -> str:
         page = f"، صفحة {passage.page_number}" if passage.page_number is not None else ""
         block = (
             f"[S{index}] ملف: {passage.file_name}{page}\n"
-            f"مقتطف مصدر غير موثوق للاقتباس فقط:\n{passage.content}"
+            f"محتوى دراسي معتمد من مراجع المادة للشرح والاستشهاد:\n{passage.content}"
         )
         if len(block) > budget:
             block = block[:budget]
@@ -267,7 +263,7 @@ def chat_with_context(
         answer = response.text
         if not answer or not answer.strip():
             raise gemini_service.GeminiRequestFailed
-        return answer.strip()
+        return sanitize_and_verify_adaptive_output(answer.strip())
     except (gemini_service.GeminiNotConfigured, gemini_service.GeminiRateLimited, gemini_service.GeminiRequestFailed):
         raise
     except Exception as exc:
@@ -439,7 +435,7 @@ def chat(
     db: Annotated[Session, Depends(get_db)],
 ) -> ChatResponse:
     """Send question, get AI agent response, and persist both in chat thread history."""
-    _accessible_subject(db, subject_id, profile)
+    subject = _accessible_subject(db, subject_id, profile)
 
     # 1. Resolve or create chat thread
     thread: ChatThread | None = None
@@ -507,10 +503,16 @@ def chat(
 
     # 4. Gather resources context & build system prompt
     passages = retrieve_for_subject(db, subject_id=subject_id, query=payload.message, limit=6)
-    context = _format_retrieved_context(passages) if passages else _gather_context(db, subject_id)
+    meta_triggers = ["ملف", "مكتبه", "مكتبة", "محتوى", "محتوي", "اشرح لي", "اشرحلي", "لخص", "لخصلي", "ابدأ", "امتحانات", "منهج", "الموجود"]
+    is_meta = any(k in payload.message.lower() for k in meta_triggers)
+    if is_meta or not passages:
+        context = _gather_context(db, subject_id, subject_title=subject.name)
+    else:
+        context = _format_retrieved_context(passages)
+
     skill = profile.skill_level or 1
     ai_cfg = resolve_ai_config(task_type="chat_qa", db=db, skill_level=skill)
-    system_prompt = _build_system_prompt(db, subject_id, skill)
+    system_prompt = _build_system_prompt(db, subject_id, skill, question=payload.message, subject_title=subject.name)
 
     # 5. Run through the intelligent orchestrator agent (multi-intent & logical answer)
     try:
@@ -521,9 +523,10 @@ def chat(
             passages=passages,
             system_prompt=system_prompt,
             context=context,
+            subject_title=subject.name,
         )
         media_result = orch_result.results.get("image_generation")
-        raw_answer = orch_result.results.get("chat_qa") or ""
+        raw_answer = sanitize_and_verify_adaptive_output(orch_result.results.get("chat_qa") or "")
 
         if not orch_result.success and not raw_answer and not media_result:
             db.rollback()
