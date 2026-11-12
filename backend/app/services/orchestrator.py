@@ -209,8 +209,46 @@ def orchestrate_chat(
     system_prompt: str | None = None,
     context: str | None = None,
     subject_title: str | None = None,
+    student_id: UUID | None = None,
+    thread_id: UUID | None = None,
 ) -> OrchestratorResult:
     """Orchestrate a chat request: classify intent, build plan, execute steps."""
+    if student_id is not None:
+        try:
+            from app.services.study_agent.agent import AIStudyAgent
+            agent = AIStudyAgent(db=db)
+            agent_res = agent.process_message(
+                student_id=student_id,
+                subject_id=subject_id,
+                message=message,
+                thread_id=thread_id,
+            )
+            media_dict = None
+            if agent_res.media_svg:
+                media_dict = {
+                    "type": agent_res.media_type or "svg",
+                    "svg": agent_res.media_svg,
+                    "title": agent_res.media_title,
+                }
+            return OrchestratorResult(
+                success=True,
+                plan=[{"step": t.tool_name, "success": t.success} for t in agent_res.execution_trace.tools_executed],
+                results={
+                    "chat_qa": agent_res.answer,
+                    "image_generation": media_dict,
+                    "agent_result": agent_res,
+                },
+            )
+        except Exception as exc:
+            # Fatal configurations and service failures must propagate
+            if isinstance(exc, (
+                __import__("app.services.gemini", fromlist=["GeminiNotConfigured"]).GeminiNotConfigured,
+                __import__("app.services.gemini", fromlist=["GeminiRateLimited"]).GeminiRateLimited,
+                __import__("app.services.gemini", fromlist=["GeminiRequestFailed"]).GeminiRequestFailed,
+            )):
+                raise
+            logger.warning("[orchestrator] AIStudyAgent run encountered exception, falling back to standard plan: %s", exc)
+
     intents = classify_intent(message)
     plan = build_plan(
         intents,

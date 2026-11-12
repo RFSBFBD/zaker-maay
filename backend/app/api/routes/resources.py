@@ -23,6 +23,7 @@ from app.core.config import get_settings
 from app.db.models import Resource, ResourceChunk, Subject, SubjectMembership, UserProfile
 from app.db.session import get_db
 from app.services import cloudinary_storage
+from app.services.storage import neon_storage
 from app.services import gemini
 from app.services.ai_router import resolve_ai_config, safe_call_ai
 from app.services.audio_processing import InvalidAudio, TRANSCRIBABLE_EXTENSIONS, inspect_audio
@@ -30,6 +31,7 @@ from app.services.document_processing import SUPPORTED_TEXT_EXTENSIONS, process_
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/subjects/{subject_id}/resources", tags=["resources"])
+batches_router = APIRouter(prefix="/api/v1/subjects/{subject_id}/upload-batches", tags=["upload-batches"])
 
 MAX_FILE_BYTES = 100 * 1024 * 1024  # 100 MiB
 ALLOWED_TYPES: dict[str, tuple[str, str]] = {
@@ -46,6 +48,10 @@ ALLOWED_TYPES: dict[str, tuple[str, str]] = {
     ".aac": ("audio/aac", "video"),
     ".flac": ("audio/flac", "video"),
     ".mp4": ("audio/mp4", "video"),
+    ".png": ("image/png", "image"),
+    ".jpg": ("image/jpeg", "image"),
+    ".jpeg": ("image/jpeg", "image"),
+    ".webp": ("image/webp", "image"),
 }
 
 
@@ -63,6 +69,14 @@ class ResourceResponse(BaseModel):
     transcript_language: str | None
     audio_duration_seconds: int | None
     created_at: datetime
+    storage_provider: str = "neon"
+    storage_bucket: str | None = None
+    storage_key: str | None = None
+    markdown_storage_key: str | None = None
+    academic_chapter: int | None = None
+    chapter_title: str | None = None
+    ingestion_status: str = "ready"
+    detected_gaps: list[str] = []
 
     @computed_field
     @property
@@ -89,6 +103,18 @@ class TranscriptResponse(BaseModel):
     model: str
     audio_duration_seconds: int
     timestamp_quality: str = "not_provided"
+
+
+class BatchUploadResponse(BaseModel):
+    batch_id: str
+    subject_id: str
+    title: str
+    status: str
+    total_files: int
+    success_count: int
+    failed_count: int
+    resources: list[dict]
+    image_synthesis: dict | None = None
 
 
 def _accessible_subject(db: Session, subject_id: UUID, profile: UserProfile) -> Subject:
@@ -153,13 +179,26 @@ def _validate_content(content: bytes, extension: str) -> str:
     return mime_type
 
 
-def _remove_orphan(public_id: str, resource_type: str) -> None:
-    try:
-        cloudinary_storage.delete_asset(public_id=public_id, resource_type=resource_type)
-    except cloudinary_storage.StorageNotConfigured:
-        logger.error("Cloudinary credentials became unavailable during orphan cleanup.")
-    except cloudinary_storage.StorageOperationFailed:
-        logger.error("Unable to remove an orphaned Cloudinary asset after a database failure.")
+def _remove_orphan(
+    public_id: str | None = None,
+    resource_type: str = "raw",
+    *,
+    storage_provider: str = "neon",
+    storage_key: str | None = None,
+    storage_bucket: str | None = None,
+) -> None:
+    if storage_provider == "neon" and storage_key:
+        try:
+            neon_storage.delete_file(key=storage_key, bucket=storage_bucket)
+        except Exception as exc:
+            logger.error("Unable to remove orphaned Neon storage object %s: %s", storage_key, exc)
+    elif public_id:
+        try:
+            cloudinary_storage.delete_asset(public_id=public_id, resource_type=resource_type)
+        except cloudinary_storage.StorageNotConfigured:
+            logger.error("Cloudinary credentials became unavailable during orphan cleanup.")
+        except cloudinary_storage.StorageOperationFailed:
+            logger.error("Unable to remove an orphaned Cloudinary asset after a database failure.")
 
 
 @router.get("", response_model=list[ResourceResponse])
@@ -392,16 +431,46 @@ async def upload_direct_resource(
     doc_name = f"{stem}.txt" if is_audio else file_name
     processed = process_document(doc_name, processed_content)
 
-    sha256 = hashlib.sha256(f"{file_name}:{uuid4().hex}".encode()).hexdigest()
+    sha256 = hashlib.sha256(file_bytes).hexdigest()
+    duplicate = db.scalar(select(Resource.id).where(Resource.subject_id == subject_id, Resource.sha256 == sha256))
+    if duplicate is not None:
+        raise HTTPException(status_code=409, detail="This file already exists in the subject library.")
+
+    resource_id = uuid4()
+    storage_key = neon_storage.build_object_key(
+        user_id=profile.id,
+        document_id=resource_id,
+        filename=file_name,
+        prefix=f"subjects/{subject_id}/resources",
+    )
+    storage_bucket = neon_storage.get_default_bucket()
+
+    try:
+        neon_storage.upload_file(
+            content=file_bytes,
+            key=storage_key,
+            bucket=storage_bucket,
+            content_type=mime_type,
+        )
+    except neon_storage.StorageNotConfigured:
+        logger.warning("Neon storage not configured; proceeding in local/degraded mode")
+    except Exception as exc:
+        logger.exception("Neon storage upload failed for direct resource: %s", exc)
+        raise HTTPException(status_code=502, detail="تعذر حفظ الملف في خوادم التخزين السحابي.") from None
+
     resource = Resource(
+        id=resource_id,
         subject_id=subject_id,
         uploaded_by=profile.id,
         file_name=file_name,
         mime_type=mime_type,
         size_bytes=len(file_bytes),
         sha256=sha256,
-        cloudinary_public_id=f"direct-resource/{uuid4().hex}",
-        secure_url="internal://direct-resource" if not is_audio else "internal://audio-transcript",
+        storage_provider="neon",
+        storage_bucket=storage_bucket,
+        storage_key=storage_key,
+        cloudinary_public_id=storage_key,
+        secure_url=f"neon://{storage_bucket}/{storage_key}",
         transcript_text=transcript_text,
         transcript_language=transcript_language,
         transcription_model="gemini" if is_audio else None,
@@ -409,19 +478,35 @@ async def upload_direct_resource(
         processing_status=processed.status,
     )
     db.add(resource)
-    db.flush()
-
-    for index, (page, chunk_text) in enumerate(processed.chunks):
-        db.add(
+    try:
+        db.flush()
+        db.add_all(
             ResourceChunk(
                 resource_id=resource.id,
                 chunk_index=index,
                 page_number=page,
                 content=chunk_text,
             )
+            for index, (page, chunk_text) in enumerate(processed.chunks)
         )
-    db.commit()
-    db.refresh(resource)
+        db.commit()
+        db.refresh(resource)
+
+        # Create persistent knowledge ingestion job record
+        try:
+            from app.services.knowledge_ingestion import create_or_resume_ingestion_job
+            create_or_resume_ingestion_job(
+                db=db,
+                resource_id=resource.id,
+                subject_id=subject_id,
+            )
+            db.commit()
+        except Exception as pipe_exc:
+            logger.warning("Could not queue knowledge ingestion job: %s", pipe_exc)
+    except Exception:
+        db.rollback()
+        _remove_orphan(storage_provider="neon", storage_key=storage_key, storage_bucket=storage_bucket)
+        raise
     return resource
 
 
@@ -431,18 +516,26 @@ def _fetch_file_from_cloudinary(public_id: str, resource_type: str, secure_url: 
     Returns (content_bytes, mime_type_from_header).
     """
     settings = get_settings()
-    if secure_url and secure_url.startswith("http"):
-        url = secure_url
-    else:
-        from cloudinary import utils as cu
-        url = cu.cloudinary_url(
-            public_id,
+    extension = PurePosixPath(public_id).suffix.lstrip(".")
+    try:
+        url = cloudinary_storage.create_download_url(
+            public_id=public_id,
+            extension=extension or "bin",
             resource_type=resource_type,
-            cloud_name=settings.cloudinary_cloud_name,
-            api_key=settings.cloudinary_api_key,
-            api_secret=settings.cloudinary_api_secret,
-            format="",
-        )[0]
+        )
+    except Exception:
+        if secure_url and secure_url.startswith("http"):
+            url = secure_url
+        else:
+            from cloudinary import utils as cu
+            url = cu.cloudinary_url(
+                public_id,
+                resource_type=resource_type,
+                cloud_name=settings.cloudinary_cloud_name,
+                api_key=settings.cloudinary_api_key,
+                api_secret=settings.cloudinary_api_secret,
+                format="",
+            )[0]
     resp = requests.get(url, timeout=120, stream=True)
     resp.raise_for_status()
     content = b""
@@ -465,31 +558,41 @@ def upload_resource(
     subject_id: UUID,
     profile: Annotated[UserProfile, Depends(get_current_profile)],
     db: Annotated[Session, Depends(get_db)],
-    cloudinary_public_id: Annotated[str, Form(...)],
-    cloudinary_secure_url: Annotated[str, Form(...)],
     file_name: Annotated[str, Form(...)],
     size_bytes: Annotated[int, Form(...)],
+    cloudinary_public_id: Annotated[str | None, Form()] = None,
+    cloudinary_secure_url: Annotated[str | None, Form()] = None,
+    storage_key: Annotated[str | None, Form()] = None,
+    storage_bucket: Annotated[str | None, Form()] = None,
     transcribe_audio: Annotated[bool, Form()] = False,
 ) -> Resource:
-    """Create a Resource record from an already-uploaded Cloudinary file.
+    """Create a Resource record from an already-uploaded file.
 
-    The browser uploads the file directly to Cloudinary first, then posts only
-    metadata here — no file bytes traverse this endpoint.
+    Supports both Neon Object Storage (via storage_key) and legacy Cloudinary (via cloudinary_public_id).
     """
     _accessible_subject(db, subject_id, profile)
     _, extension = _safe_filename(file_name)
     resource_type = ALLOWED_TYPES[extension][1]
 
-    # Re-download from Cloudinary so we can compute sha256 and process content
+    storage_provider = "neon" if storage_key else ("cloudinary" if cloudinary_public_id else "neon")
+    target_bucket = storage_bucket or neon_storage.get_default_bucket()
+
+    # Re-download from storage provider so we can compute sha256 and process content
     try:
-        try:
-            content, mime_type = _fetch_file_from_cloudinary(cloudinary_public_id, resource_type, cloudinary_secure_url)
-        except TypeError:
-            content, mime_type = _fetch_file_from_cloudinary(cloudinary_public_id, resource_type)
+        if storage_key:
+            content = neon_storage.download_file(storage_key, bucket=target_bucket)
+            mime_type = ALLOWED_TYPES[extension][0]
+        elif cloudinary_public_id:
+            try:
+                content, mime_type = _fetch_file_from_cloudinary(cloudinary_public_id, resource_type, cloudinary_secure_url)
+            except TypeError:
+                content, mime_type = _fetch_file_from_cloudinary(cloudinary_public_id, resource_type)
+        else:
+            raise HTTPException(status_code=422, detail="Storage reference (storage_key or cloudinary_public_id) required.")
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Failed to fetch uploaded file from Cloudinary: %s", exc)
+        logger.exception("Failed to fetch uploaded file: %s", exc)
         raise HTTPException(status_code=502, detail="تعذر تنزيل الملف المرفوع للمعالجة.") from None
 
     if len(content) > MAX_FILE_BYTES:
@@ -559,6 +662,13 @@ def upload_resource(
     sha256 = hashlib.sha256(content).hexdigest()
     duplicate = db.scalar(select(Resource.id).where(Resource.subject_id == subject_id, Resource.sha256 == sha256))
     if duplicate is not None:
+        _remove_orphan(
+            public_id=cloudinary_public_id,
+            resource_type=resource_type,
+            storage_provider=storage_provider,
+            storage_key=storage_key,
+            storage_bucket=target_bucket,
+        )
         raise HTTPException(status_code=409, detail="This file already exists in the subject library.")
 
     resource = Resource(
@@ -568,8 +678,11 @@ def upload_resource(
         mime_type=mime_type,
         size_bytes=len(content),
         sha256=sha256,
-        cloudinary_public_id=cloudinary_public_id,
-        secure_url=cloudinary_secure_url,
+        storage_provider=storage_provider,
+        storage_bucket=target_bucket if storage_key else None,
+        storage_key=storage_key,
+        cloudinary_public_id=cloudinary_public_id or storage_key,
+        secure_url=cloudinary_secure_url or f"neon://{target_bucket}/{storage_key}",
         transcript_text=transcript.transcript if transcript else None,
         transcript_language=transcript.language if transcript else None,
         transcription_model=get_settings().gemini_model if transcript else None,
@@ -587,11 +700,23 @@ def upload_resource(
         db.refresh(resource)
     except IntegrityError:
         db.rollback()
-        _remove_orphan(cloudinary_public_id, resource_type)
+        _remove_orphan(
+            public_id=cloudinary_public_id,
+            resource_type=resource_type,
+            storage_provider=storage_provider,
+            storage_key=storage_key,
+            storage_bucket=target_bucket,
+        )
         raise HTTPException(status_code=409, detail="This file already exists in the subject library.") from None
     except SQLAlchemyError:
         db.rollback()
-        _remove_orphan(cloudinary_public_id, resource_type)
+        _remove_orphan(
+            public_id=cloudinary_public_id,
+            resource_type=resource_type,
+            storage_provider=storage_provider,
+            storage_key=storage_key,
+            storage_bucket=target_bucket,
+        )
         raise HTTPException(status_code=503, detail="File metadata could not be saved.") from None
     return resource
 
@@ -637,10 +762,14 @@ def trigger_resource_transcription(
 
     resource_type = ALLOWED_TYPES[extension][1]
     try:
-        try:
-            content, mime_type = _fetch_file_from_cloudinary(resource.cloudinary_public_id, resource_type, resource.secure_url)
-        except TypeError:
-            content, mime_type = _fetch_file_from_cloudinary(resource.cloudinary_public_id, resource_type)
+        if resource.storage_provider == "neon" and resource.storage_key:
+            content = neon_storage.download_file(resource.storage_key, bucket=resource.storage_bucket)
+            mime_type = resource.mime_type
+        else:
+            try:
+                content, mime_type = _fetch_file_from_cloudinary(resource.cloudinary_public_id or "", resource_type, resource.secure_url)
+            except TypeError:
+                content, mime_type = _fetch_file_from_cloudinary(resource.cloudinary_public_id or "", resource_type)
     except Exception as exc:
         logger.exception("Failed to fetch audio for transcription: %s", exc)
         raise HTTPException(status_code=502, detail="تعذر تنزيل الملف الصوتي من السحابة.") from None
@@ -696,16 +825,32 @@ def get_download_url(
     resource = db.scalar(select(Resource).where(Resource.id == resource_id, Resource.subject_id == subject_id))
     if resource is None:
         raise HTTPException(status_code=404, detail="Resource not found.")
-    if resource.cloudinary_public_id.startswith(("audio-transcript/", "gemini-resource/")) or resource.secure_url.startswith("internal://"):
+    if (resource.cloudinary_public_id and resource.cloudinary_public_id.startswith(("audio-transcript/", "gemini-resource/"))) or resource.secure_url.startswith("internal://"):
         import urllib.parse
         encoded = urllib.parse.quote(resource.transcript_text or "")
         return DownloadResponse(download_url=f"data:text/plain;charset=utf-8,{encoded}")
 
+    # 1. Neon Object Storage
+    if resource.storage_provider == "neon" and resource.storage_key:
+        try:
+            url = neon_storage.generate_presigned_url(
+                key=resource.storage_key,
+                bucket=resource.storage_bucket,
+                filename=resource.file_name,
+                expires_in=600,
+            )
+            return DownloadResponse(download_url=url, expires_in_seconds=600)
+        except neon_storage.StorageNotConfigured:
+            raise HTTPException(status_code=503, detail="File storage is not configured.") from None
+        except neon_storage.StorageOperationFailed:
+            raise HTTPException(status_code=502, detail="File download link could not be created.") from None
+
+    # 2. Legacy Cloudinary
     extension = PurePosixPath(resource.file_name).suffix.lower()
     resource_type = ALLOWED_TYPES.get(extension, ("", ""))[1]
     try:
         url = cloudinary_storage.create_download_url(
-            public_id=resource.cloudinary_public_id,
+            public_id=resource.cloudinary_public_id or "",
             extension=extension.lstrip("."),
             resource_type=resource_type,
         )
@@ -729,7 +874,16 @@ def delete_resource(
         raise HTTPException(status_code=404, detail="Resource not found.")
     if profile.role != "admin" and resource.uploaded_by != profile.id:
         raise HTTPException(status_code=403, detail="Only the uploader or an admin can delete this file.")
-    if not resource.cloudinary_public_id.startswith("audio-transcript/"):
+
+    # 1. Delete from storage provider first
+    if resource.storage_provider == "neon" and resource.storage_key:
+        try:
+            neon_storage.delete_file(key=resource.storage_key, bucket=resource.storage_bucket)
+        except neon_storage.StorageNotConfigured:
+            logger.warning("Neon storage not configured during deletion of resource %s", resource.id)
+        except Exception as exc:
+            logger.warning("Neon storage failed to delete object %s: %s", resource.storage_key, exc)
+    elif resource.cloudinary_public_id and not resource.cloudinary_public_id.startswith("audio-transcript/"):
         extension = PurePosixPath(resource.file_name).suffix.lower()
         resource_type = ALLOWED_TYPES.get(extension, ("", ""))[1]
         try:
@@ -738,9 +892,261 @@ def delete_resource(
             raise HTTPException(status_code=503, detail="File storage is not configured.") from None
         except cloudinary_storage.StorageOperationFailed:
             raise HTTPException(status_code=502, detail="File storage could not delete the file.") from None
+
+    # 2. Delete database record and associated chunks
     try:
+        from sqlalchemy import delete
+        db.execute(delete(ResourceChunk).where(ResourceChunk.resource_id == resource.id))
         db.delete(resource)
         db.commit()
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=503, detail="File metadata could not be removed.") from None
+
+
+# ── AI Knowledge Ingestion & Academic Graph Endpoints ─────────────────────────
+
+@router.post("/{resource_id}/process-knowledge")
+def process_resource_knowledge(
+    subject_id: UUID,
+    resource_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Trigger or retry full AI knowledge ingestion, canonical markdown conversion, and graph indexing."""
+    _accessible_subject(db, subject_id, profile)
+    resource = db.get(Resource, resource_id)
+    if not resource or resource.subject_id != subject_id:
+        raise HTTPException(status_code=404, detail="Resource not found")
+
+    from app.services.knowledge_ingestion import run_knowledge_ingestion_pipeline
+    result = run_knowledge_ingestion_pipeline(db=db, resource_id=resource.id)
+    return result.model_dump()
+
+
+@router.get("/{resource_id}/knowledge-job")
+def get_resource_knowledge_job(
+    subject_id: UUID,
+    resource_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Get the current processing stage and status of a resource's knowledge ingestion."""
+    _accessible_subject(db, subject_id, profile)
+    from app.db.models import KnowledgeProcessingJob
+    job = db.scalar(
+        select(KnowledgeProcessingJob).where(KnowledgeProcessingJob.resource_id == resource_id)
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="No knowledge processing job found for this resource")
+    return {
+        "job_id": str(job.id),
+        "resource_id": str(job.resource_id),
+        "status": job.status,
+        "current_stage": job.current_stage,
+        "progress_pct": job.progress_pct,
+        "error_message": job.error_message,
+        "retry_count": job.retry_count,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+    }
+
+
+@router.get("/academic-chapters")
+def get_subject_academic_chapters_endpoint(
+    subject_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Get logically organized course chapters and any detected sequence gaps."""
+    _accessible_subject(db, subject_id, profile)
+    from app.services.knowledge_ingestion import organize_subject_academic_hierarchy
+    report = organize_subject_academic_hierarchy(db, subject_id)
+    return report.model_dump()
+
+
+@router.get("/knowledge-graph")
+def get_subject_knowledge_graph_endpoint(
+    subject_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Get cross-document concepts, relationships, and contradiction warnings for a subject."""
+    _accessible_subject(db, subject_id, profile)
+    from app.db.models import ConceptRelationship, ExtractedConcept
+    concepts = db.scalars(select(ExtractedConcept).where(ExtractedConcept.subject_id == subject_id)).all()
+    relationships = db.scalars(select(ConceptRelationship).where(ConceptRelationship.subject_id == subject_id)).all()
+
+    return {
+        "total_concepts": len(concepts),
+        "total_relationships": len(relationships),
+        "concepts": [
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "definition": c.definition,
+                "type": c.concept_type,
+                "page": c.page_or_slide_number,
+                "resource_id": str(c.resource_id),
+            }
+            for c in concepts
+        ],
+        "relationships": [
+            {
+                "id": str(r.id),
+                "source_concept_id": str(r.source_concept_id),
+                "target_concept_id": str(r.target_concept_id),
+                "type": r.relationship_type,
+                "description": r.description,
+                "conflict_details": r.conflict_details,
+            }
+            for r in relationships
+        ],
+    }
+
+
+@router.post("/upload-batch", response_model=BatchUploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_batch_resources(
+    subject_id: UUID,
+    files: list[UploadFile] = File(...),
+    batch_title: str | None = Form(None),
+    transcribe_audio: bool = Form(False),
+    profile: Annotated[UserProfile, Depends(get_current_profile)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+) -> dict:
+    """Upload and independently process multiple files and images in a unified batch."""
+    _accessible_subject(db, subject_id, profile)
+    if not files:
+        raise HTTPException(status_code=422, detail="لم يتم تحديد أي ملفات للرفع.")
+
+    if len(files) > 25:
+        raise HTTPException(
+            status_code=422,
+            detail="تجاوزت الحد الأقصى للملفات في الدفعة الواحدة (الحد الأقصى هو 25 ملفاً).",
+        )
+
+    files_data = []
+    total_bytes = 0
+    for f in files:
+        raw_name = f.filename or "file"
+        stem, ext = _safe_filename(raw_name)
+        if ext not in ALLOWED_TYPES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"نوع الملف '{raw_name}' غير مدعوم.",
+            )
+        content = await f.read()
+        if not content:
+            raise HTTPException(status_code=422, detail=f"الملف '{raw_name}' فارغ.")
+        total_bytes += len(content)
+        mime_type, _ = ALLOWED_TYPES[ext]
+        files_data.append({
+            "file_name": raw_name,
+            "content": content,
+            "mime_type": mime_type,
+        })
+
+    if total_bytes > 250 * 1024 * 1024:
+        raise HTTPException(
+            status_code=413,
+            detail="إجمالي حجم ملفات الدفعة يتجاوز الحد الأقصى المسموح به (250 ميغابايت).",
+        )
+
+    from app.services.knowledge_ingestion.batch_processor import create_upload_batch, process_batch_upload
+    batch = create_upload_batch(
+        db=db,
+        subject_id=subject_id,
+        student_id=profile.id,
+        title=batch_title,
+        total_files=len(files_data),
+    )
+
+    result = process_batch_upload(
+        db=db,
+        batch_id=batch.id,
+        subject_id=subject_id,
+        uploaded_by=profile.id,
+        files_data=files_data,
+        transcribe_audio=transcribe_audio,
+    )
+    return result
+
+
+@router.get("/upload-batches/{batch_id}")
+@batches_router.get("/{batch_id}")
+def get_upload_batch_status(
+    subject_id: UUID,
+    batch_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Retrieve status, metrics, and resources of an upload batch."""
+    _accessible_subject(db, subject_id, profile)
+    from app.db.models import UploadBatch
+    batch = db.scalar(
+        select(UploadBatch).where(
+            UploadBatch.id == batch_id,
+            UploadBatch.subject_id == subject_id,
+        )
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    batch_resources = db.scalars(
+        select(Resource).where(Resource.batch_id == batch_id)
+    ).all()
+
+    return {
+        "id": str(batch.id),
+        "subject_id": str(batch.subject_id),
+        "student_id": str(batch.student_id),
+        "title": batch.title,
+        "total_files": batch.total_files,
+        "status": batch.status,
+        "success_count": batch.success_count,
+        "failed_count": batch.failed_count,
+        "batch_metadata": batch.batch_metadata,
+        "created_at": batch.created_at.isoformat() if batch.created_at else None,
+        "updated_at": batch.updated_at.isoformat() if batch.updated_at else None,
+        "resources": [
+            {
+                "id": str(r.id),
+                "file_name": r.file_name,
+                "size_bytes": r.size_bytes,
+                "mime_type": r.mime_type,
+                "ingestion_status": r.ingestion_status,
+                "processing_status": r.processing_status,
+                "chapter_number": r.academic_chapter,
+                "chapter_title": r.chapter_title,
+            }
+            for r in batch_resources
+        ],
+    }
+
+
+@router.post("/{resource_id}/retry")
+def retry_resource_ingestion_endpoint(
+    subject_id: UUID,
+    resource_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Retry knowledge ingestion for a single failed resource."""
+    _accessible_subject(db, subject_id, profile)
+    resource = db.get(Resource, resource_id)
+    if not resource or resource.subject_id != subject_id:
+        raise HTTPException(status_code=404, detail="Resource not found")
+
+    from app.services.knowledge_ingestion.batch_processor import retry_failed_resource
+    try:
+        result = retry_failed_resource(db=db, resource_id=resource_id)
+        return {
+            "resource_id": str(resource_id),
+            "status": "ready",
+            "chapter_number": result.academic_chapter,
+            "chapter_title": result.chapter_title,
+            "concepts_count": result.concepts_count,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to retry resource: {exc}")
+

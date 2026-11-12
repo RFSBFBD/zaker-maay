@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     cloudinary_cloud_name: str | None = None
     cloudinary_api_key: str | None = None
     cloudinary_api_secret: str | None = None
+    # Neon Object Storage (S3-compatible)
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_endpoint_url_s3: str | None = None
+    aws_region: str = "us-east-2"
+    neon_storage_bucket: str = "ai-documents"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.5-flash"
 

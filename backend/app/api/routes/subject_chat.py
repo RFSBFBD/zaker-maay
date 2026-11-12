@@ -524,6 +524,8 @@ def chat(
             system_prompt=system_prompt,
             context=context,
             subject_title=subject.name,
+            student_id=profile.id,
+            thread_id=thread.id,
         )
         media_result = orch_result.results.get("image_generation")
         raw_answer = sanitize_and_verify_adaptive_output(orch_result.results.get("chat_qa") or "")

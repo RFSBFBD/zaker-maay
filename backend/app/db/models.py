@@ -2,8 +2,10 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -116,6 +118,39 @@ class StudySession(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", server_default="active")
 
 
+
+class UploadBatch(Base):
+    """Batch upload container managing multi-file and multi-image uploads."""
+    __tablename__ = "upload_batches"
+    __table_args__ = (
+        Index("ix_upload_batches_subject_id", "subject_id"),
+        Index("ix_upload_batches_student_id", "student_id"),
+        Index("ix_upload_batches_status", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    subject_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False
+    )
+    student_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="Untitled Batch")
+    total_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", server_default="pending"
+    )  # pending, uploading, processing, completed, partially_completed, failed
+    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    batch_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Resource(Base):
     __tablename__ = "resources"
     __table_args__ = (
@@ -126,17 +161,31 @@ class Resource(Base):
         ),
         UniqueConstraint("subject_id", "sha256", name="uq_resource_subject_sha256"),
         Index("ix_resources_subject_created", "subject_id", "created_at"),
+        Index("ix_resources_batch_id", "batch_id"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     subject_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"))
     uploaded_by: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("profiles.id", ondelete="RESTRICT"))
+    batch_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("upload_batches.id", ondelete="SET NULL"), nullable=True
+    )
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    cloudinary_public_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    cloudinary_public_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     secure_url: Mapped[str] = mapped_column(Text, nullable=False)
+    storage_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="neon", server_default="neon")
+    storage_bucket: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    markdown_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    markdown_storage_bucket: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    academic_chapter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chapter_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    document_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    ingestion_status: Mapped[str] = mapped_column(String(32), nullable=False, default="ready", server_default="ready")
+    detected_gaps: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
     transcript_text: Mapped[str | None] = mapped_column(Text)
     transcript_language: Mapped[str | None] = mapped_column(String(35))
     transcription_model: Mapped[str | None] = mapped_column(String(100))
@@ -184,8 +233,21 @@ class YouTubeLink(Base):
     video_id: Mapped[str] = mapped_column(String(11), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(String(255))
+    channel_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript_text: Mapped[str | None] = mapped_column(Text)
     transcript_language: Mapped[str | None] = mapped_column(String(10))
+    markdown_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    markdown_storage_bucket: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    visual_analysis_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", server_default="pending"
+    )
+    visual_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    academic_chapter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chapter_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    video_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     processing_status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="pending", server_default="pending"
     )
@@ -206,6 +268,11 @@ class YouTubeChunk(Base):
     )
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    start_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    end_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    segment_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    visual_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class StudyQuiz(Base):
@@ -389,6 +456,246 @@ class AgentSkill(Base):
     is_active: Mapped[bool] = mapped_column(nullable=False, default=True, server_default="true")
     created_by: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class StudentLearningProfile(Base):
+    """Persistent student learning profile capturing pedagogical preferences and habits."""
+    __tablename__ = "student_learning_profiles"
+    __table_args__ = (
+        Index("ix_student_learning_profiles_student_id", "student_id"),
+    )
+
+    student_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("profiles.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    learning_style: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="balanced", server_default="balanced"
+    )
+    explanation_depth: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="balanced", server_default="balanced"
+    )
+    preferred_language: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ar", server_default="ar"
+    )
+    visual_preference: Mapped[bool] = mapped_column(
+        nullable=False, default=True, server_default="true"
+    )
+    custom_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    total_study_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    sessions_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class StudentTopicKnowledge(Base):
+    """Evidence-based topic knowledge state tracking mastery and misconceptions."""
+    __tablename__ = "student_topic_knowledge"
+    __table_args__ = (
+        UniqueConstraint("student_id", "subject_id", "topic_name", name="uq_student_subject_topic"),
+        Index("ix_student_topic_knowledge_student_subject", "student_id", "subject_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    student_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    subject_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False
+    )
+    topic_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    mastery_score: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    confidence_score: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    understood_concepts: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+    misconceptions: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+    last_evidence_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    recommended_action: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    interaction_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AcademicChapter(Base):
+    """Academic chapter organizing course documents logically rather than by upload time."""
+    __tablename__ = "academic_chapters"
+    __table_args__ = (
+        UniqueConstraint("subject_id", "chapter_number", name="uq_chapter_subject_number"),
+        Index("ix_academic_chapters_subject", "subject_id", "order_index"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    subject_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False
+    )
+    chapter_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    learning_objectives: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AcademicTopic(Base):
+    """Specific educational topic or section within a chapter or subject."""
+    __tablename__ = "academic_topics"
+    __table_args__ = (
+        Index("ix_academic_topics_subject", "subject_id"),
+        Index("ix_academic_topics_chapter", "chapter_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    subject_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False
+    )
+    chapter_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("academic_chapters.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    normalized_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_foundational: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ExtractedConcept(Base):
+    """Factual, source-grounded concept extracted during AI document understanding."""
+    __tablename__ = "extracted_concepts"
+    __table_args__ = (
+        Index("ix_extracted_concepts_subject", "subject_id"),
+        Index("ix_extracted_concepts_resource", "resource_id"),
+        Index("ix_extracted_concepts_name", "normalized_name"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    subject_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False
+    )
+    topic_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("academic_topics.id", ondelete="SET NULL"), nullable=True
+    )
+    resource_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("resources.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    definition: Mapped[str] = mapped_column(Text, nullable=False)
+    concept_type: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="concept", server_default="concept"
+    )
+    page_or_slide_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence_score: Mapped[float] = mapped_column(Float, nullable=False, default=1.0, server_default="1.0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ConceptRelationship(Base):
+    """Semantic and pedagogical relationships across concepts in a subject."""
+    __tablename__ = "concept_relationships"
+    __table_args__ = (
+        UniqueConstraint("source_concept_id", "target_concept_id", "relationship_type", name="uq_concept_rel_pair"),
+        Index("ix_concept_relationships_subject", "subject_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    subject_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False
+    )
+    source_concept_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("extracted_concepts.id", ondelete="CASCADE"), nullable=False
+    )
+    target_concept_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("extracted_concepts.id", ondelete="CASCADE"), nullable=False
+    )
+    relationship_type: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )  # prerequisite_of, depends_on, expands, explains, references, compares_with, duplicates, potentially_conflicts_with
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    conflict_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence_score: Mapped[float] = mapped_column(Float, nullable=False, default=1.0, server_default="1.0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class KnowledgeProcessingJob(Base):
+    """Persistent job tracker for asynchronous knowledge ingestion, understanding, and RAG indexing."""
+    __tablename__ = "knowledge_processing_jobs"
+    __table_args__ = (
+        Index("ix_knowledge_processing_jobs_resource", "resource_id"),
+        Index("ix_knowledge_processing_jobs_status", "status"),
+        Index("ix_knowledge_processing_jobs_batch", "batch_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    resource_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("resources.id", ondelete="CASCADE"), nullable=False
+    )
+    subject_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False
+    )
+    batch_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("upload_batches.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="queued", server_default="queued"
+    )
+    current_stage: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="queued", server_default="queued"
+    )
+    progress_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    parser_version: Mapped[str] = mapped_column(String(32), nullable=False, default="v2.0", server_default="v2.0")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

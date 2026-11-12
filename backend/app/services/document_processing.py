@@ -1,6 +1,8 @@
 import io
 import logging
+import os
 import re
+import tempfile
 from dataclasses import dataclass
 
 from docx import Document
@@ -12,6 +14,7 @@ MAX_EXTRACTED_CHARACTERS = 500_000
 CHUNK_SIZE = 1_200
 CHUNK_OVERLAP = 180
 SUPPORTED_TEXT_EXTENSIONS = {".pdf", ".txt", ".docx", ".pptx", ".ppt"}
+SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 @dataclass(frozen=True)
@@ -45,6 +48,8 @@ def _split(text: str, page_number: int | None) -> list[tuple[int | None, str]]:
 
 def process_document(file_name: str, content: bytes) -> ProcessedDocument:
     extension = "." + file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+    if extension in SUPPORTED_IMAGE_EXTENSIONS:
+        return ProcessedDocument("ready", ((1, f"[صورة تعليمية: {file_name}]"),))
     if extension not in SUPPORTED_TEXT_EXTENSIONS:
         return ProcessedDocument("unsupported", ())
     try:
@@ -83,3 +88,38 @@ def process_document(file_name: str, content: bytes) -> ProcessedDocument:
     if not chunks:
         return ProcessedDocument("no_text", ())
     return ProcessedDocument("truncated" if truncated else "ready", tuple(chunks))
+
+
+def process_document_from_file(file_path: str, file_name: str | None = None) -> ProcessedDocument:
+    """Parse document content directly from a local filesystem path."""
+    actual_name = file_name or os.path.basename(file_path)
+    with open(file_path, "rb") as f:
+        content = f.read()
+    return process_document(actual_name, content)
+
+
+def process_document_from_storage(
+    storage_key: str,
+    file_name: str,
+    *,
+    bucket: str | None = None,
+) -> ProcessedDocument:
+    """Download a document from Neon Object Storage to a temporary file, parse into chunks, and clean up.
+
+    Ensures zero permanent file leakage on the host server.
+    """
+    from app.services.storage import neon_storage
+
+    extension = "." + file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ".tmp"
+    with tempfile.NamedTemporaryFile(suffix=extension, delete=False) as tmp:
+        temp_path = tmp.name
+
+    try:
+        neon_storage.download_file_to_path(storage_key, temp_path, bucket=bucket)
+        return process_document_from_file(temp_path, file_name=file_name)
+    finally:
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError as exc:
+            logger.warning("Could not remove temporary file %s: %s", temp_path, exc)

@@ -3,6 +3,7 @@ import re
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -26,6 +27,10 @@ class RetrievedPassage:
     chunk_index: int
     content: str
     score: float
+    start_seconds: float | None = None
+    end_seconds: float | None = None
+    timestamp_url: str | None = None
+    visual_description: str | None = None
 
 
 def tokenize(text: str) -> list[str]:
@@ -82,6 +87,10 @@ def retrieve_for_subject(db: Session, *, subject_id: UUID, query: str, limit: in
                     )
                 )
             elif isinstance(source, YouTubeLink):
+                start_sec = getattr(chunk, "start_seconds", None)
+                end_sec = getattr(chunk, "end_seconds", None)
+                ts_url = f"https://www.youtube.com/watch?v={source.video_id}&t={int(start_sec)}s" if start_sec is not None else None
+                vis_desc = getattr(chunk, "visual_description", None)
                 ranked.append(
                     RetrievedPassage(
                         resource_id=source.id,
@@ -90,6 +99,10 @@ def retrieve_for_subject(db: Session, *, subject_id: UUID, query: str, limit: in
                         chunk_index=chunk.chunk_index,
                         content=chunk.content,
                         score=score,
+                        start_seconds=start_sec,
+                        end_seconds=end_sec,
+                        timestamp_url=ts_url,
+                        visual_description=vis_desc,
                     )
                 )
     ranked.sort(key=lambda passage: (-passage.score, passage.file_name, passage.chunk_index))
@@ -178,3 +191,94 @@ def sample_for_subject(db: Session, *, subject_id: UUID, limit: int = 4) -> list
                 )
             )
     return passages
+
+
+def retrieve_concept_and_prerequisites(
+    db: Session,
+    *,
+    subject_id: UUID,
+    query: str,
+    limit: int = 3,
+) -> dict[str, list[dict[str, Any]]]:
+    """Retrieve matched concepts, their definitions, and connected prerequisites from the knowledge graph."""
+    from app.db.models import ConceptRelationship, ExtractedConcept
+    from app.services.knowledge_ingestion.schemas import RelationshipType
+
+    query_tokens = tokenize(query)
+    if not query_tokens:
+        return {"concepts": [], "prerequisites": [], "conflicts": []}
+
+    all_concepts = db.scalars(
+        select(ExtractedConcept).where(ExtractedConcept.subject_id == subject_id)
+    ).all()
+
+    matched: list[tuple[float, ExtractedConcept]] = []
+    for c in all_concepts:
+        c_tokens = set(tokenize(f"{c.name} {c.definition}"))
+        overlap = len(set(query_tokens) & c_tokens)
+        if overlap > 0:
+            matched.append((float(overlap), c))
+
+    matched.sort(key=lambda x: -x[0])
+    selected_concepts = [c for _, c in matched[:limit]]
+
+    concepts_data = [
+        {
+            "id": str(c.id),
+            "name": c.name,
+            "definition": c.definition,
+            "type": c.concept_type,
+            "page": c.page_or_slide_number,
+            "source_excerpt": c.source_excerpt,
+        }
+        for c in selected_concepts
+    ]
+
+    prereqs_data: list[dict[str, Any]] = []
+    conflicts_data: list[dict[str, Any]] = []
+    seen_prereq_ids = set()
+
+    for c in selected_concepts:
+        # Find prerequisites
+        p_rels = db.scalars(
+            select(ConceptRelationship).where(
+                ConceptRelationship.subject_id == subject_id,
+                ConceptRelationship.target_concept_id == c.id,
+                ConceptRelationship.relationship_type.in_((
+                    RelationshipType.PREREQUISITE_OF.value,
+                    RelationshipType.DEPENDS_ON.value,
+                )),
+            )
+        ).all()
+        for rel in p_rels:
+            if rel.source_concept_id not in seen_prereq_ids:
+                seen_prereq_ids.add(rel.source_concept_id)
+                source_c = db.get(ExtractedConcept, rel.source_concept_id)
+                if source_c:
+                    prereqs_data.append({
+                        "name": source_c.name,
+                        "definition": source_c.definition,
+                        "required_for": c.name,
+                        "description": rel.description,
+                    })
+
+        # Check for recorded conflicts / contradictions
+        c_rels = db.scalars(
+            select(ConceptRelationship).where(
+                ConceptRelationship.subject_id == subject_id,
+                ConceptRelationship.source_concept_id == c.id,
+                ConceptRelationship.relationship_type == RelationshipType.POTENTIALLY_CONFLICTS_WITH.value,
+            )
+        ).all()
+        for rel in c_rels:
+            conflicts_data.append({
+                "concept_name": c.name,
+                "conflict_details": rel.conflict_details or rel.description,
+            })
+
+    return {
+        "concepts": concepts_data,
+        "prerequisites": prereqs_data,
+        "conflicts": conflicts_data,
+    }
+

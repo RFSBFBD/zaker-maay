@@ -58,6 +58,16 @@ def check_cloudinary() -> None:
     cloudinary.api.usage(timeout=10)
 
 
+def check_neon_storage() -> None:
+    settings = get_settings()
+    if not all((settings.aws_endpoint_url_s3, settings.aws_access_key_id, settings.aws_secret_access_key)):
+        raise RuntimeError
+    from app.services.storage import neon_storage
+    s3 = neon_storage.get_s3_client()
+    bucket = neon_storage.get_default_bucket()
+    s3.head_bucket(Bucket=bucket)
+
+
 def check_gemini() -> None:
     settings = get_settings()
     if not settings.gemini_api_key:
@@ -85,6 +95,7 @@ def main() -> int:
     checks: tuple[tuple[str, Callable[[], None]], ...] = (
         ("supabase_auth", check_supabase),
         ("database", check_database),
+        ("neon_storage", check_neon_storage),
         ("cloudinary", check_cloudinary),
         ("gemini", check_gemini),
     )

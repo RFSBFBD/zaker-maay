@@ -5,7 +5,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.subjects import router as subjects_router
 from app.api.routes.study_sessions import router as study_sessions_router
-from app.api.routes.resources import router as resources_router
+from app.api.routes.resources import batches_router, router as resources_router
 from app.api.routes.assistant import router as assistant_router
 from app.api.routes.quizzes import router as quizzes_router
 from app.api.routes.progress import router as progress_router
@@ -40,6 +40,7 @@ app.include_router(auth_router)
 app.include_router(subjects_router)
 app.include_router(study_sessions_router)
 app.include_router(resources_router)
+app.include_router(batches_router)
 app.include_router(assistant_router)
 app.include_router(quizzes_router)
 app.include_router(progress_router)

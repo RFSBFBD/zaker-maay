@@ -71,9 +71,25 @@ class YouTubeLinkResponse(BaseModel):
     video_id: str
     url: str
     title: str | None
+    channel_name: str | None = None
+    duration_seconds: int | None = None
     processing_status: str
     transcript_available: bool = False
+    visual_analysis_status: str = "pending"
+    visual_summary: str | None = None
+    markdown_storage_key: str | None = None
     created_at: datetime
+
+
+class YouTubeSegmentItem(BaseModel):
+    chunk_index: int
+    title: str | None = None
+    start_seconds: float | None = None
+    end_seconds: float | None = None
+    formatted_time: str
+    clickable_url: str
+    content: str
+    visual_description: str | None = None
 
 
 def _get_subject(db: Session, subject_id: UUID, profile: UserProfile) -> Subject:
@@ -119,32 +135,12 @@ def _split_transcript(text: str) -> list[tuple[int, str]]:
 
 
 def _process_link_transcript(db: Session, link: YouTubeLink) -> None:
-    """Fetch and store transcript chunks for a YouTube link."""
+    """Execute complete video learning, visual analysis, and timestamped chunk indexing."""
+    from app.services.video_learning import process_video_learning
     try:
-        text = fetch_youtube_transcript(link.video_id)
-        if text is None:
-            link.processing_status = "no_captions"
-            db.commit()
-            return
-        link.transcript_text = text
-        link.transcript_language = "auto"
-        link.processing_status = "ready"
-        # Delete old chunks
-        db.execute(delete(YouTubeChunk).where(YouTubeChunk.youtube_link_id == link.id))
-        # Create new chunks
-        chunks = _split_transcript(text)
-        yt_chunks = [
-            YouTubeChunk(
-                youtube_link_id=link.id,
-                chunk_index=index,
-                content=chunk_text,
-            )
-            for index, chunk_text in chunks
-        ]
-        db.add_all(yt_chunks)
-        db.commit()
+        process_video_learning(db=db, youtube_link_id=link.id)
     except Exception as exc:
-        logger.warning("Failed to fetch transcript for video %s: %s", link.video_id, exc)
+        logger.warning("Video learning processing failed for video %s: %s", link.video_id, exc)
         link.processing_status = "failed"
         db.commit()
 
@@ -233,3 +229,57 @@ def remove_youtube_link(
         raise HTTPException(status_code=403, detail="Only the link owner or an admin can remove this video.")
     db.delete(link)
     db.commit()
+
+
+@router.post("/{link_id}/retry", response_model=YouTubeLinkResponse)
+def retry_youtube_video_learning(
+    subject_id: UUID,
+    link_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> YouTubeLink:
+    """Retry video learning and multimodal understanding for a failed or uncaptioned video."""
+    _get_subject(db, subject_id, profile)
+    link = db.scalar(select(YouTubeLink).where(YouTubeLink.id == link_id, YouTubeLink.subject_id == subject_id))
+    if link is None:
+        raise HTTPException(status_code=404, detail="YouTube link not found.")
+    _process_link_transcript(db, link)
+    db.refresh(link)
+    return link
+
+
+@router.get("/{link_id}/segments", response_model=list[YouTubeSegmentItem])
+def get_youtube_video_segments(
+    subject_id: UUID,
+    link_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[YouTubeSegmentItem]:
+    """Retrieve timestamped segments with clickable YouTube links and visual observations."""
+    from app.services.video_learning import build_youtube_timestamp_url, format_timestamp
+
+    _get_subject(db, subject_id, profile)
+    link = db.scalar(select(YouTubeLink).where(YouTubeLink.id == link_id, YouTubeLink.subject_id == subject_id))
+    if link is None:
+        raise HTTPException(status_code=404, detail="YouTube link not found.")
+
+    chunks = db.scalars(
+        select(YouTubeChunk)
+        .where(YouTubeChunk.youtube_link_id == link.id)
+        .order_by(YouTubeChunk.chunk_index)
+    ).all()
+
+    return [
+        YouTubeSegmentItem(
+            chunk_index=c.chunk_index,
+            title=c.segment_title,
+            start_seconds=c.start_seconds,
+            end_seconds=c.end_seconds,
+            formatted_time=f"[{format_timestamp(c.start_seconds or 0)} - {format_timestamp(c.end_seconds or 0)}]",
+            clickable_url=build_youtube_timestamp_url(link.video_id, c.start_seconds or 0),
+            content=c.content,
+            visual_description=c.visual_description,
+        )
+        for c in chunks
+    ]
+

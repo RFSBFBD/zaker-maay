@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { apiRequest } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 
@@ -16,6 +16,9 @@ type Resource = {
   transcript_language: string | null;
   audio_duration_seconds: number | null;
   has_transcript: boolean;
+  academic_chapter?: number | null;
+  chapter_title?: string | null;
+  ingestion_status?: string;
   created_at: string;
 };
 
@@ -34,9 +37,24 @@ type YouTubeLink = {
   video_id: string;
   url: string;
   title: string | null;
+  channel_name?: string | null;
+  duration_seconds?: number | null;
   processing_status: string;
   transcript_available: boolean;
+  visual_analysis_status?: string;
+  visual_summary?: string | null;
   created_at: string;
+};
+
+type VideoSegmentItem = {
+  chunk_index: number;
+  title: string | null;
+  start_seconds: number | null;
+  end_seconds: number | null;
+  formatted_time: string;
+  clickable_url: string;
+  content: string;
+  visual_description: string | null;
 };
 
 type Subject = {
@@ -50,6 +68,43 @@ type SignedDownload = {
   expires_in_seconds: number;
 };
 
+type QueuedFile = {
+  id: string;
+  file: File;
+  previewUrl: string | null;
+  isImage: boolean;
+  isAudio: boolean;
+  status: "idle" | "uploading" | "ready" | "failed";
+  error: string | null;
+  resourceId?: string;
+  chapterNumber?: number | null;
+  chapterTitle?: string | null;
+};
+
+type BatchUploadResponse = {
+  batch_id: string;
+  subject_id: string;
+  title: string;
+  status: string;
+  total_files: number;
+  success_count: number;
+  failed_count: number;
+  resources: Array<{
+    resource_id?: string;
+    file_name: string;
+    status: string;
+    chapter_number?: number | null;
+    chapter_title?: string | null;
+    concepts_count?: number | null;
+    error?: string | null;
+  }>;
+  image_synthesis?: {
+    images_count: number;
+    ordered_filenames: string[];
+    markdown_storage_key: string;
+  } | null;
+};
+
 function formatSize(bytes: number): string {
   return bytes < 1024 * 1024
     ? `${Math.max(1, Math.round(bytes / 1024))} كيلوبايت`
@@ -57,7 +112,6 @@ function formatSize(bytes: number): string {
 }
 
 function processingLabel(status: Resource["processing_status"]): string {
-  // Return plain text without emoji for cleaner UI
   return {
     pending: "قيد المعالجة",
     ready: "النص جاهز",
@@ -66,15 +120,10 @@ function processingLabel(status: Resource["processing_status"]): string {
     truncated: "عولج جزء من النص",
     failed: "فشل المعالجة",
   }[status];
-  return {
-    pending: "⏳ بانتظار المعالجة",
-    ready: "✅ النص جاهز للشرح والبحث",
-    no_text: "⚠️ لم يُستخرج نص",
-    unsupported: "ℹ️ لا يدعم استخراج النص",
-    truncated: "📄 عولج جزء من النص",
-    failed: "❌ تعذرت المعالجة",
-  }[status];
 }
+
+const SUPPORTED_ACCEPT =
+  ".pdf,.txt,.docx,.pptx,.ppt,.mp3,.wav,.m4a,.webm,.ogg,.aac,.flac,.mp4,.png,.jpg,.jpeg,.webp";
 
 export function SubjectLibrary({ subjectId }: { subjectId: string }) {
   const [resources, setResources] = useState<Resource[]>([]);
@@ -90,6 +139,23 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
   const [transcribeAudio, setTranscribeAudio] = useState(false);
   const [transcripts, setTranscripts] = useState<Record<string, ResourceTranscript>>({});
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
+
+  // Multi-file & Multi-image state
+  const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
+  const [batchTitle, setBatchTitle] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{
+    total: number;
+    success: number;
+    failed: number;
+    status: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Video learning state
+  const [videoSegments, setVideoSegments] = useState<Record<string, VideoSegmentItem[]>>({});
+  const [loadingSegmentsId, setLoadingSegmentsId] = useState<string | null>(null);
+  const [retryingVideoId, setRetryingVideoId] = useState<string | null>(null);
 
   const getHeaders = useCallback(async () => {
     const {
@@ -128,165 +194,176 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
     };
   }, [loadResources]);
 
-  async function upload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const input = form.elements.namedItem("file") as HTMLInputElement | null;
-    const file = input?.files?.[0];
-    if (!file) return;
+  // Handle adding files to queue (via file picker or drag & drop)
+  const handleFilesAdded = useCallback((incoming: FileList | File[]) => {
+    setError(null);
+    const newItems: QueuedFile[] = [];
+    let hasAudio = false;
 
-    if (file.size > 100 * 1024 * 1024) {
-      setError("حجم الملف يتجاوز الحد الأقصى المسموح به (100 ميغابايت).");
-      return;
+    Array.from(incoming).forEach((file) => {
+      const isImg =
+        file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
+      const isAud =
+        file.type.startsWith("audio/") ||
+        /\.(mp3|wav|m4a|ogg|webm|aac|flac|mp4)$/i.test(file.name);
+
+      if (isAud) hasAudio = true;
+
+      const previewUrl = isImg ? URL.createObjectURL(file) : null;
+      newItems.push({
+        id: `${file.name}-${file.size}-${Math.random().toString(36).substring(2, 9)}`,
+        file,
+        previewUrl,
+        isImage: isImg,
+        isAudio: isAud,
+        status: "idle",
+        error: null,
+      });
+    });
+
+    if (hasAudio) {
+      setTranscribeAudio(true);
     }
+
+    setQueuedFiles((current) => [...current, ...newItems]);
+  }, []);
+
+  // Remove individual file from selection
+  const removeQueuedFile = useCallback((id: string) => {
+    setQueuedFiles((current) => {
+      const target = current.find((item) => item.id === id);
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return current.filter((item) => item.id !== id);
+    });
+  }, []);
+
+  // Clear all queued files
+  const clearQueue = useCallback(() => {
+    queuedFiles.forEach((item) => {
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    });
+    setQueuedFiles([]);
+    setBatchProgress(null);
+  }, [queuedFiles]);
+
+  // Execute batch upload
+  const uploadBatch = async (event: FormEvent) => {
+    event.preventDefault();
+    if (queuedFiles.length === 0) return;
 
     setUploading(true);
     setError(null);
     setNotice(null);
 
+    // Mark queued items as uploading
+    setQueuedFiles((curr) =>
+      curr.map((f) => (f.status === "idle" ? { ...f, status: "uploading" } : f))
+    );
+
     try {
       const headers = await getHeaders();
-      const isAudio =
-        file.type.startsWith("audio/") ||
-        /\.(mp3|wav|m4a|ogg|webm|aac|flac|mp4)$/i.test(file.name);
+      const formData = new FormData();
+      if (batchTitle.trim()) {
+        formData.append("batch_title", batchTitle.trim());
+      }
+      formData.append("transcribe_audio", String(transcribeAudio));
 
-      // Direct upload to Gemini for ALL files up to 100 MiB!
-      // This completely bypasses Vercel's 4.5MB serverless limit and Cloudinary's 10MB limit.
-      setNotice(
-        isAudio
-          ? "جارٍ تهيئة الرفع المباشر للتسجيل الصوتي والتفريغ الذكي…"
-          : "جارٍ تهيئة الرفع المباشر للكتاب/المستند واستخراج المحتوى بالذكاء الاصطناعي…"
+      queuedFiles.forEach((item) => {
+        formData.append("files", item.file);
+      });
+
+      setNotice(`جارٍ رفع ومعالجة ${queuedFiles.length} ملفات بواسطة الذكاء الاصطناعي…`);
+
+      const resp = await apiRequest<BatchUploadResponse>(
+        `/api/v1/subjects/${subjectId}/resources/upload-batch`,
+        {
+          method: "POST",
+          headers: { Authorization: headers.Authorization },
+          body: formData,
+        },
+        300_000
       );
 
-      let mimeType = file.type;
-      if (!mimeType || mimeType === "application/octet-stream") {
-        const ext = file.name.split(".").pop()?.toLowerCase();
-        if (ext === "pdf") mimeType = "application/pdf";
-        else if (ext === "docx") mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-        else if (ext === "pptx") mimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-        else if (ext === "ppt") mimeType = "application/vnd.ms-powerpoint";
-        else if (ext === "txt") mimeType = "text/plain";
-        else if (ext === "mp3") mimeType = "audio/mpeg";
-        else if (ext === "wav") mimeType = "audio/wav";
-        else if (ext === "m4a") mimeType = "audio/mp4";
-        else if (ext === "webm") mimeType = "audio/webm";
-        else if (ext === "ogg") mimeType = "audio/ogg";
-        else if (ext === "aac") mimeType = "audio/aac";
-        else if (ext === "flac") mimeType = "audio/flac";
-        else if (ext === "mp4") mimeType = "audio/mp4";
-        else if (ext === "png") mimeType = "image/png";
-        else if (ext === "jpg" || ext === "jpeg") mimeType = "image/jpeg";
-        else mimeType = "application/pdf";
-      }
+      setBatchProgress({
+        total: resp.total_files,
+        success: resp.success_count,
+        failed: resp.failed_count,
+        status: resp.status,
+      });
 
-      try {
-        // 1. Get Google Gemini Resumable Upload URL (0 bytes transferred through Vercel)
-        const uploadUrlData = await apiRequest<{ upload_url: string }>(
-          `/api/v1/subjects/${subjectId}/resources/gemini-upload-url?file_name=${encodeURIComponent(file.name)}&file_size=${file.size}&mime_type=${encodeURIComponent(mimeType)}`,
-          {
-            method: "POST",
-            headers,
+      // Update per-item statuses
+      setQueuedFiles((curr) =>
+        curr.map((item) => {
+          const matched = resp.resources.find((r) => r.file_name === item.file.name);
+          if (matched) {
+            return {
+              ...item,
+              status: matched.status === "failed" ? "failed" : "ready",
+              error: matched.error || null,
+              resourceId: matched.resource_id,
+              chapterNumber: matched.chapter_number,
+              chapterTitle: matched.chapter_title,
+            };
           }
-        );
+          return item;
+        })
+      );
 
-        if (!uploadUrlData?.upload_url) {
-          throw new Error("تعذر إنشاء رابط الرفع المباشر.");
-        }
+      await loadResources();
 
+      if (resp.failed_count === 0) {
         setNotice(
-          isAudio
-            ? "جارٍ رفع التسجيل الصوتي مباشرة إلى خوادم المعالجة الذكية…"
-            : "جارٍ رفع الكتاب/الملف مباشرة إلى خوادم المعالجة الذكية…"
+          `تم بنجاح رفع وفهرسة ${resp.success_count} ملفات تعليمية في مكتبة المادة!`
         );
-
-        // 2. Stream binary directly from Browser -> Google Gemini (bypassing Vercel 4.5MB limit)
-        const googleResp = await fetch(uploadUrlData.upload_url, {
-          method: "POST",
-          headers: {
-            "X-Goog-Upload-Offset": "0",
-            "X-Goog-Upload-Command": "upload, finalize",
-          },
-          body: file,
-        });
-
-        if (!googleResp.ok) {
-          const errBody = await googleResp.text().catch(() => "");
-          throw new Error(`تعذر الرفع المباشر (${googleResp.status}): ${errBody || "تحقق من اتصالك بالإنترنت"}`);
-        }
-
-        const googleJson = await googleResp.json();
-        const geminiFileName = googleJson.file?.name;
-        if (!geminiFileName) {
-          throw new Error("لم يتم استلام معرّف الملف من خدمة المعالجة.");
-        }
-
+      } else {
         setNotice(
-          isAudio
-            ? "اكتمل الرفع! جارٍ تفريغ المحاضرة وفهرستها كمرجع دراسي يعتمد عليه المساعد الذكي…"
-            : "اكتمل الرفع! جارٍ استخراج المحتوى العلمي وفهرسة الصفحات في مكتبة المادة…"
+          `اكتملت معالجة ${resp.success_count} ملفات بنجاح، بينما تعذرت معالجة ${resp.failed_count} ملفات. يمكنك إعادة المحاولة لكل ملف بشكل مستقل.`
         );
-
-        // 3. Inform backend to extract text/transcribe and store indexed chunks
-        const created = await apiRequest<Resource>(
-          `/api/v1/subjects/${subjectId}/resources/process-audio-transcript`,
-          {
-            method: "POST",
-            headers: { ...headers, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              gemini_file_name: geminiFileName,
-              file_name: file.name,
-              size_bytes: file.size,
-              mime_type: mimeType,
-            }),
-          },
-          180_000
-        );
-
-        setResources((current) => [created, ...current]);
-        form.reset();
-        setTranscribeAudio(false);
-        setNotice(
-          isAudio
-            ? "تم تفريغ المحاضرة الصوتية بنجاح وإضافتها كمرجع دراسي يعتمد عليه المساعد الذكي!"
-            : "تمت معالجة الكتاب/الملف وفهرسته بنجاح داخل مكتبة المادة!"
-        );
-        return;
-      } catch (geminiErr) {
-        console.warn("Direct upload to Gemini failed:", geminiErr);
-        // Only fallback to server if file size is within Vercel's 4.5MB serverless limit
-        if (file.size <= 4 * 1024 * 1024) {
-          const formData = new FormData();
-          formData.append("file", file);
-
-          const directHeaders: Record<string, string> = {};
-          if (headers.Authorization) {
-            directHeaders.Authorization = headers.Authorization;
-          }
-
-          const created = await apiRequest<Resource>(
-            `/api/v1/subjects/${subjectId}/resources/upload-direct`,
-            {
-              method: "POST",
-              headers: directHeaders,
-              body: formData,
-            },
-            180_000
-          );
-
-          setResources((current) => [created, ...current]);
-          form.reset();
-          setTranscribeAudio(false);
-          setNotice("تم رفع الملف ومعالجته بنجاح داخل مكتبة المادة!");
-          return;
-        }
-        throw geminiErr;
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "تعذر رفع الملف.");
+      setError(cause instanceof Error ? cause.message : "تعذر رفع الدفعة.");
+      setQueuedFiles((curr) =>
+        curr.map((f) => (f.status === "uploading" ? { ...f, status: "failed", error: "فشل الرفع" } : f))
+      );
     } finally {
       setUploading(false);
     }
-  }
+  };
+
+  // Retry an individual failed file without re-uploading the whole batch
+  const retryResource = async (resourceId: string, queuedId: string) => {
+    setError(null);
+    setQueuedFiles((curr) =>
+      curr.map((item) => (item.id === queuedId ? { ...item, status: "uploading", error: null } : item))
+    );
+
+    try {
+      const headers = await getHeaders();
+      await apiRequest(
+        `/api/v1/subjects/${subjectId}/resources/${resourceId}/retry`,
+        {
+          method: "POST",
+          headers,
+        }
+      );
+
+      setQueuedFiles((curr) =>
+        curr.map((item) => (item.id === queuedId ? { ...item, status: "ready", error: null } : item))
+      );
+      await loadResources();
+      setNotice("تمت إعادة معالجة الملف بنجاح!");
+    } catch (cause) {
+      setQueuedFiles((curr) =>
+        curr.map((item) =>
+          item.id === queuedId
+            ? { ...item, status: "failed", error: cause instanceof Error ? cause.message : "فشلت المحاولة" }
+            : item
+        )
+      );
+    }
+  };
 
   async function prepareDownload(resourceId: string) {
     try {
@@ -349,29 +426,73 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
       });
       setYoutubeLinks((current) => [created, ...current]);
       setVideoUrl("");
-      setNotice("أُضيف رابط الفيديو التعليمي إلى مراجع المادة.");
+      setNotice("تمت إضافة رابط الفيديو للمادة بنجاح.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "تعذر إضافة رابط الفيديو.");
+      setError(cause instanceof Error ? cause.message : "تعذر حفظ رابط الفيديو.");
     } finally {
       setVideoBusy(false);
     }
   }
 
   async function removeVideo(linkId: string) {
-    if (!window.confirm("هل تريد إزالة هذا الفيديو من مراجع المادة؟")) return;
     setError(null);
+    setNotice(null);
     try {
       const headers = await getHeaders();
-      await apiRequest<void>(`/api/v1/subjects/${subjectId}/youtube-links/${linkId}`, {
+      await apiRequest(`/api/v1/subjects/${subjectId}/youtube-links/${linkId}`, {
         method: "DELETE",
         headers,
       });
-      setYoutubeLinks((current) => current.filter((link) => link.id !== linkId));
+      setYoutubeLinks((current) => current.filter((l) => l.id !== linkId));
       setNotice("حُذف رابط الفيديو من مراجع المادة.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر حذف رابط الفيديو.");
     }
   }
+
+  const toggleVideoSegments = async (linkId: string) => {
+    if (videoSegments[linkId]) {
+      setVideoSegments((prev) => {
+        const copy = { ...prev };
+        delete copy[linkId];
+        return copy;
+      });
+      return;
+    }
+    setLoadingSegmentsId(linkId);
+    try {
+      const headers = await getHeaders();
+      const segs = await apiRequest<VideoSegmentItem[]>(
+        `/api/v1/subjects/${subjectId}/youtube-links/${linkId}/segments`,
+        { headers }
+      );
+      setVideoSegments((prev) => ({ ...prev, [linkId]: segs }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر تحميل فهارس الفيديو.");
+    } finally {
+      setLoadingSegmentsId(null);
+    }
+  };
+
+  const retryVideoProcessing = async (linkId: string) => {
+    setRetryingVideoId(linkId);
+    setError(null);
+    try {
+      const headers = await getHeaders();
+      const updated = await apiRequest<YouTubeLink>(
+        `/api/v1/subjects/${subjectId}/youtube-links/${linkId}/retry`,
+        { method: "POST", headers }
+      );
+      setYoutubeLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
+      setNotice("تمت إعادة معالجة وتحليل المحاضرة المرئية بنجاح!");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر إعادة معالجة الفيديو.");
+    } finally {
+      setRetryingVideoId(null);
+    }
+  };
+
+  const totalQueuedBytes = queuedFiles.reduce((sum, item) => sum + item.file.size, 0);
 
   return (
     <div className="library-wrapper" style={{ maxWidth: 960, margin: "0 auto", paddingBottom: 60 }}>
@@ -381,54 +502,286 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
           مراجع <span>{subject?.name ?? "المادة"}</span>
         </h1>
         <p className="intro" style={{ margin: 0 }}>
-          {subject?.description || "ارفع كتبك والمحاضرات الصوتية لتكون مصدراً وحيداً يشرح منه المساعد الذكي."}
+          {subject?.description || "ارفع كتبك والمحاضرات والصور الدراسية لتكون مصدراً وحيداً يشرح منه المساعد الذكي."}
         </p>
       </div>
 
       {error && <p className="state-card form-error" role="alert">{error}</p>}
       {notice && <p className="state-card form-notice" role="status">{notice}</p>}
 
-      {/* Upload Box */}
-      <form className="upload-panel" onSubmit={upload} style={{ marginBottom: 32 }}>
-        <h3 style={{ fontSize: 18, marginBottom: 8 }}>📤 إضافة كتاب أو ملزمة أو تسجيل صوتي</h3>
-        <label htmlFor="resource-file" style={{ fontSize: 14, color: "var(--muted)" }}>
-          ارفع كتبك ومحاضراتك الصوتية لإضافتها إلى مكتبة المادة
-        </label>
-        <div className="upload-row" style={{ marginTop: 12 }}>
+      {/* Bulk & Multi-Image Upload Panel */}
+      <section className="upload-panel" style={{ marginBottom: 32 }}>
+        <h3 style={{ fontSize: 18, marginBottom: 8 }}>📤 رفع جماعي للكتب، المستندات، والصور الدراسية</h3>
+        <p style={{ fontSize: 14, color: "var(--muted)", margin: "0 0 16px" }}>
+          يمكنك تحديد عدة ملفات أو صور معاً، أو سحب وإفلات مذكرات وفصول كاملة. تتم معالجة وفهرسة كل ملف باستقلالية تامة.
+        </p>
+
+        {/* Drag & Drop Target Zone */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragging(false);
+            if (e.dataTransfer.files?.length) {
+              handleFilesAdded(e.dataTransfer.files);
+            }
+          }}
+          style={{
+            border: `2px dashed ${isDragging ? "var(--green)" : "var(--line)"}`,
+            backgroundColor: isDragging ? "var(--surface-raised)" : "var(--surface)",
+            borderRadius: 12,
+            padding: "28px 20px",
+            textAlign: "center",
+            cursor: "pointer",
+            transition: "all 0.2s ease",
+            marginBottom: 16,
+          }}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <span style={{ fontSize: 36, display: "block", marginBottom: 8 }}>
+            {isDragging ? "📂" : "📥"}
+          </span>
+          <strong style={{ fontSize: 16, display: "block", marginBottom: 4 }}>
+            اسحب وأفلت الملفات والصور هنا، أو انقر للاختيار
+          </strong>
+          <span style={{ fontSize: 13, color: "var(--muted)" }}>
+            يدعم ملفات PDF، Word (DOCX)، الشرائح (PPTX)، التسجيلات الصوتية، والصور (PNG، JPG، WEBP)
+          </span>
+
           <input
-            id="resource-file"
-            name="file"
+            ref={fileInputRef}
             type="file"
-            accept=".pdf,.txt,.docx,.mp3,.wav,.m4a,.webm,.ogg,.aac,.flac,.mp4"
-            required
+            multiple
+            accept={SUPPORTED_ACCEPT}
+            style={{ display: "none" }}
             disabled={uploading}
             onChange={(e) => {
-              const selected = e.target.files?.[0];
-              if (selected) {
-                const isAudio = selected.type.startsWith("audio/") || /\.(mp3|wav|m4a|ogg|webm|aac|flac|mp4)$/i.test(selected.name);
-                if (isAudio) {
-                  setTranscribeAudio(true);
-                }
+              if (e.target.files?.length) {
+                handleFilesAdded(e.target.files);
+                e.target.value = "";
               }
             }}
           />
-          <button className="session-start" type="submit" disabled={uploading}>
-            {uploading ? "⏳ جارٍ الرفع والمعالجة…" : "⬆️ رفع إلى مكتبة المادة"}
-          </button>
         </div>
-        <label className="consent-choice" style={{ marginTop: 12 }}>
-          <input
-            type="checkbox"
-            checked={transcribeAudio}
-            onChange={(event) => setTranscribeAudio(event.target.checked)}
-            disabled={uploading}
-          />
-          🎙️ تفعيل التفريغ النصي الصوتي الذكي بواسطة Google Gemini.
-        </label>
-        <p className="privacy-note">
-          عند تفعيل هذا الخيار يتم استخراج النص وتحويله لمقاطع دراسية يستشهد بها المساعد في إجاباته.
-        </p>
-      </form>
+
+        {/* Selected Files Queue Preview */}
+        {queuedFiles.length > 0 && (
+          <div
+            style={{
+              backgroundColor: "var(--surface-raised)",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 16,
+              border: "1px solid var(--line)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 12,
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: 15 }}>
+                الملفات المحددة ({queuedFiles.length}) · الحجم الإجمالي: {formatSize(totalQueuedBytes)}
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  ➕ إضافة المزيد
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  style={{ color: "#d9534f" }}
+                  onClick={clearQueue}
+                  disabled={uploading}
+                >
+                  🗑️ مسح الكل
+                </button>
+              </div>
+            </div>
+
+            {/* Optional Batch Title */}
+            <div style={{ marginBottom: 14 }}>
+              <input
+                type="text"
+                placeholder="عنوان الدفعة أو اسم الفصل (اختياري، مثلاً: الفصل الأول - المذكرات والصور الملحقة)"
+                value={batchTitle}
+                onChange={(e) => setBatchTitle(e.target.value)}
+                disabled={uploading}
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid var(--line)",
+                  background: "var(--surface)",
+                  color: "inherit",
+                  fontSize: 14,
+                }}
+              />
+            </div>
+
+            {/* List of individual queued files */}
+            <div style={{ display: "grid", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
+              {queuedFiles.map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    background: "var(--surface)",
+                    border: "1px solid var(--line)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+                    {item.isImage && item.previewUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={item.previewUrl}
+                        alt={item.file.name}
+                        style={{
+                          width: 40,
+                          height: 40,
+                          objectFit: "cover",
+                          borderRadius: 6,
+                          border: "1px solid var(--line)",
+                        }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: 24 }}>
+                        {item.isAudio ? "🎙️" : item.file.name.endsWith(".pdf") ? "📄" : "📝"}
+                      </span>
+                    )}
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: 14,
+                          fontWeight: 500,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={item.file.name}
+                      >
+                        {item.file.name}
+                      </p>
+                      <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                        {formatSize(item.file.size)}
+                        {item.chapterTitle ? ` · ${item.chapterTitle}` : ""}
+                        {item.error ? ` · ⚠️ ${item.error}` : ""}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Status & Actions */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {item.status === "idle" && (
+                      <span style={{ fontSize: 12, color: "var(--muted)" }}>جاهز</span>
+                    )}
+                    {item.status === "uploading" && (
+                      <span style={{ fontSize: 12, color: "var(--mint)" }}>⏳ جارٍ المعالجة…</span>
+                    )}
+                    {item.status === "ready" && (
+                      <span style={{ fontSize: 12, color: "var(--green)", fontWeight: 600 }}>✅ تم الاستيعاب</span>
+                    )}
+                    {item.status === "failed" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: "#d9534f" }}>❌ تعذر</span>
+                        {item.resourceId && (
+                          <button
+                            type="button"
+                            className="text-button"
+                            style={{ fontSize: 12, padding: "2px 6px" }}
+                            onClick={() => retryResource(item.resourceId!, item.id)}
+                          >
+                            🔄 إعادة
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {item.status === "idle" && !uploading && (
+                      <button
+                        type="button"
+                        onClick={() => removeQueuedFile(item.id)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "var(--muted)",
+                          fontSize: 16,
+                          padding: 4,
+                        }}
+                        title="إزالة من القائمة"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Audio transcription option if any audio queued */}
+            {queuedFiles.some((f) => f.isAudio) && (
+              <label className="consent-choice" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={transcribeAudio}
+                  onChange={(event) => setTranscribeAudio(event.target.checked)}
+                  disabled={uploading}
+                />
+                🎙️ تفعيل التفريغ النصي الصوتي الذكي للتسجيلات الصوتية في هذه الدفعة.
+              </label>
+            )}
+
+            {/* Upload Button */}
+            <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="session-start"
+                disabled={uploading || queuedFiles.length === 0}
+                onClick={uploadBatch}
+                style={{ padding: "10px 24px", fontSize: 15 }}
+              >
+                {uploading
+                  ? `⏳ جارٍ رفع ومعالجة (${queuedFiles.length}) ملفات…`
+                  : `⬆️ بدء الرفع والمعالجة الذكية (${queuedFiles.length} ملفات)`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Batch Summary Report if completed */}
+        {batchProgress && (
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 8,
+              backgroundColor: batchProgress.failed === 0 ? "rgba(16, 185, 129, 0.1)" : "rgba(245, 158, 11, 0.1)",
+              border: `1px solid ${batchProgress.failed === 0 ? "var(--green)" : "var(--line)"}`,
+              fontSize: 14,
+              marginBottom: 12,
+            }}
+          >
+            <strong>تقرير المعالجة الأكاديمية:</strong> اكتملت معالجة {batchProgress.success} من أصل {batchProgress.total} ملفات بنجاح.
+            {batchProgress.failed > 0 && ` (تعذرت معالجة ${batchProgress.failed}، يمكنك النقر على زر "إعادة" أعلاه).`}
+          </div>
+        )}
+      </section>
 
       {/* Uploaded Resources List */}
       <section style={{ marginBottom: 40 }}>
@@ -442,7 +795,7 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
             <span style={{ fontSize: 36, display: "block", marginBottom: 8 }}>📖</span>
             <strong>لا توجد ملفات في مكتبة هذه المادة بعد.</strong>
             <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 14 }}>
-              ارفع مذكرتك أو كتابك بصيغة PDF أو تسجيل المحاضرة من النموذج أعلاه لكي يبدأ المساعد بشرحه.
+              ارفع مذكرتك، كتابك، أو صور السبورة والمحاضرات من النموذج أعلاه لكي يبدأ المساعد بشرحها.
             </p>
           </div>
         )}
@@ -452,7 +805,10 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
             {resources.map((resource) => (
               <article className="resource-item" key={resource.id}>
                 <div>
-                  <h3 style={{ fontSize: 17, margin: "0 0 6px" }}>📄 {resource.file_name}</h3>
+                  <h3 style={{ fontSize: 17, margin: "0 0 6px" }}>
+                    {resource.mime_type.startsWith("image/") ? "🖼️ " : resource.mime_type.startsWith("audio/") ? "🎙️ " : "📄 "}
+                    {resource.file_name}
+                  </h3>
                   <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
                     {formatSize(resource.size_bytes)} · {new Date(resource.created_at).toLocaleDateString("ar-EG")} ·{" "}
                     <span style={{ fontWeight: 600 }}>
@@ -460,6 +816,7 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
                         ? "🎙️ تسجيل صوتي (غير مفرغ بعد)"
                         : processingLabel(resource.processing_status)}
                     </span>
+                    {resource.chapter_title ? ` · 🏷️ ${resource.chapter_title}` : ""}
                     {resource.transcript_language ? ` · لغة التفريغ: ${resource.transcript_language}` : ""}
                   </p>
                 </div>
@@ -593,6 +950,126 @@ export function SubjectLibrary({ subjectId }: { subjectId: string }) {
                     allowFullScreen
                   />
                 </div>
+
+                {/* Video Learning Details & Actions */}
+                <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                  <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                    {link.channel_name ? `🎙️ القناة: ${link.channel_name} · ` : ""}
+                    {link.duration_seconds ? `⏱️ المدة: ${Math.floor(link.duration_seconds / 60)} دقيقة · ` : ""}
+                    {link.visual_analysis_status === "ready" && (
+                      <span style={{ color: "var(--mint)", fontWeight: 500 }}>
+                        👁️ تم استخلاص المخططات والسلايدات البصرية
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => toggleVideoSegments(link.id)}
+                      disabled={loadingSegmentsId === link.id}
+                      style={{ fontWeight: 600 }}
+                    >
+                      {loadingSegmentsId === link.id
+                        ? "⏳ جارٍ التحميل…"
+                        : videoSegments[link.id]
+                        ? "▲ إخفاء الفهرس الزمني"
+                        : "▼ ⏱️ الفهرس الزمني والمخططات"}
+                    </button>
+                    {(link.processing_status === "failed" || link.processing_status === "no_captions") && (
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => retryVideoProcessing(link.id)}
+                        disabled={retryingVideoId === link.id}
+                        style={{ color: "var(--green)", fontWeight: 600 }}
+                      >
+                        {retryingVideoId === link.id ? "⏳ جارٍ إعادة المحاولة…" : "🔄 إعادة التحليل"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Timestamped Topics & Visual Index Drawer */}
+                {videoSegments[link.id] && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      padding: 14,
+                      borderRadius: 8,
+                      backgroundColor: "var(--surface-raised)",
+                      border: "1px solid var(--line)",
+                    }}
+                  >
+                    <h4 style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 600 }}>
+                      📑 الفهرس الزمني والمفاهيم البصرية المستوعبة ({videoSegments[link.id].length} مقاطع):
+                    </h4>
+                    {videoSegments[link.id].length === 0 ? (
+                      <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>
+                        لا توجد مقاطع مفهرسة مسجلة لهذا الفيديو.
+                      </p>
+                    ) : (
+                      <div style={{ display: "grid", gap: 8, maxHeight: 280, overflowY: "auto" }}>
+                        {videoSegments[link.id].map((seg) => (
+                          <div
+                            key={seg.chunk_index}
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: 10,
+                              padding: "8px 10px",
+                              borderRadius: 6,
+                              backgroundColor: "var(--surface)",
+                              border: "1px solid var(--line)",
+                              fontSize: 13,
+                            }}
+                          >
+                            <a
+                              href={seg.clickable_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                color: "var(--mint)",
+                                fontWeight: 700,
+                                textDecoration: "none",
+                                whiteSpace: "nowrap",
+                                backgroundColor: "rgba(16, 185, 129, 0.1)",
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                              }}
+                              title="فتح المحاضرة مباشرة عند هذا التوقيت"
+                            >
+                              ▶️ {seg.formatted_time}
+                            </a>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <strong style={{ display: "block", marginBottom: 2 }}>
+                                {seg.title || "مقطع دراسي"}
+                              </strong>
+                              <span style={{ color: "var(--muted)", fontSize: 12, display: "block" }}>
+                                {seg.content.slice(0, 140)}...
+                              </span>
+                              {seg.visual_description && (
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    marginTop: 4,
+                                    fontSize: 11,
+                                    color: "var(--mint)",
+                                    backgroundColor: "rgba(52, 211, 153, 0.1)",
+                                    padding: "1px 6px",
+                                    borderRadius: 4,
+                                  }}
+                                >
+                                  {seg.visual_description}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </article>
             ))}
           </div>
