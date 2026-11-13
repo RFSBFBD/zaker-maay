@@ -263,3 +263,29 @@ def generate_presigned_url(
     except Exception as exc:
         logger.exception("Failed to generate presigned URL for key: %s", key)
         raise StorageOperationFailed(f"Failed to generate download URL: {exc}") from exc
+
+
+def generate_presigned_upload_url(
+    key: str,
+    *,
+    content_type: str,
+    expires_in: int = 600,
+    bucket: str | None = None,
+) -> str:
+    """Generate a temporary presigned PUT URL so the browser can upload a file
+    directly to Neon Object Storage, bypassing the backend entirely (and with it,
+    the hosting platform's serverless request-body size limit).
+    """
+    target_bucket = bucket or get_default_bucket()
+    client = get_s3_client()
+    try:
+        url = client.generate_presigned_url(
+            "put_object",
+            Params={"Bucket": target_bucket, "Key": key, "ContentType": content_type},
+            ExpiresIn=expires_in,
+        )
+        return url
+    except Exception as exc:
+        logger.exception("Failed to generate presigned upload URL for key: %s", key)
+        raise StorageOperationFailed(f"Failed to generate upload URL: {exc}") from exc
+

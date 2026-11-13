@@ -245,6 +245,43 @@ def get_cloudinary_upload_params(
     }
 
 
+@router.get("/upload-url", response_model=dict)
+def get_neon_upload_url(
+    subject_id: UUID,
+    profile: Annotated[UserProfile, Depends(get_current_profile)],
+    db: Annotated[Session, Depends(get_db)],
+    file_name: str = Query(...),
+) -> dict:
+    _accessible_subject(db, subject_id, profile)
+    safe_name, extension = _safe_filename(file_name)
+    mime_type = ALLOWED_TYPES[extension][0]
+
+    resource_id = uuid4()
+    storage_key = neon_storage.build_object_key(
+        user_id=profile.id,
+        document_id=resource_id,
+        filename=safe_name,
+        prefix=f"subjects/{subject_id}/resources",
+    )
+    bucket = neon_storage.get_default_bucket()
+
+    try:
+        upload_url = neon_storage.generate_presigned_upload_url(
+            storage_key, content_type=mime_type, bucket=bucket,
+        )
+    except neon_storage.StorageNotConfigured:
+        raise HTTPException(status_code=503, detail="تخزين السحابة غير مهيأ.") from None
+    except neon_storage.StorageOperationFailed:
+        raise HTTPException(status_code=502, detail="تعذر إنشاء رابط الرفع.") from None
+
+    return {
+        "upload_url": upload_url,
+        "storage_key": storage_key,
+        "storage_bucket": bucket,
+        "content_type": mime_type,
+    }
+
+
 @router.post("/gemini-upload-url", response_model=dict)
 def get_gemini_upload_url(
     subject_id: UUID,
